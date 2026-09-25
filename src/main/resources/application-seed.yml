@@ -1,0 +1,4 @@
+# `seed` profile: run DevSeedRunner against the configured database, then exit.
+spring:
+  main:
+    web-application-type: none

@@ -1,0 +1,16 @@
+{
+  "name": "@washon/camera-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mock camera that posts canned OCR payloads to the WashOn backend (POST /ingest/ocr) for local development",
+  "type": "module",
+  "scripts": {
+    "simulate": "tsx camera-simulator.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

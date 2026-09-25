@@ -1,0 +1,47 @@
+services:
+  # MariaDB 10.11 LTS (supported to 2028). Not 11.4 LTS: the Flyway version
+  # managed by Spring Boot 3.5 (11.7) only officially supports MariaDB <= 11.2
+  # and logs an "upgrade recommended" warning against 11.4.
+  # Host port 3307 (not 3306) so it does not collide with a MariaDB/MySQL
+  # already running on the developer machine; backend/application.yml
+  # defaults to jdbc:mariadb://localhost:3307/washon to match.
+  mariadb:
+    image: mariadb:10.11
+    container_name: washon-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: washon
+      MARIADB_USER: washon
+      MARIADB_PASSWORD: washon
+      MARIADB_ROOT_PASSWORD: washon-root
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00
+    ports:
+      - "3307:3306"
+    volumes:
+      - washon-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: washon-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - washon-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  washon-mariadb-data:
+  washon-redis-data:

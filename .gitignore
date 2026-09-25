@@ -1,0 +1,55 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# plaintext dev secrets printed by the `seed` profile (DevSeedRunner)
+.seed-api-key
+.seed-api-keys.txt
+.seed-admin-credentials
+
+# local config overrides / env
+.env
+.env.*
+application-local.yml
+application-local.properties
+
+# compiled / IDE output
+out/
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+*.class
+
+# IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse / STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# VS Code
+.vscode/
+
+# logs
+*.log
+logs/
+
+# OS
+.DS_Store
+
+# oh-my-claudecode runtime state
+.omc/
+
+# Node (tools/camera-simulator)
+node_modules/

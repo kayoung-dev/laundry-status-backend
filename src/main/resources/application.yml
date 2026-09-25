@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: washon-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:mariadb://localhost:3307/washon}
+    username: ${DATABASE_USERNAME:washon}
+    password: ${DATABASE_PASSWORD:washon}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway (db/migration) owns the schema; Hibernate only checks that the
+      # entity mappings match it. Never switch this to update/create outside
+      # a throwaway local DDL-draft run.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      # Redis is used for locks/rate limiting only, never as a Spring Data
+      # repository store (all repositories are JPA).
+      repositories:
+        enabled: false
+  mvc:
+    async:
+      # SSE room streams (dev.washon.realtime) are meant to stay open
+      # indefinitely; -1 disables Spring MVC's default async request timeout.
+      request-timeout: -1
+
+server:
+  # Not the NestJS API's 3001, so both can run side by side during the
+  # blue-green migration (8081 rather than 8080, which is commonly taken).
+  port: ${PORT:8081}
+
+washon:
+  cors:
+    # Single explicit origin (never "*") because the admin session cookie is
+    # sent with credentials: "include" (dev.washon.common.web.AdminWebConfig).
+    allowed-origin: ${WASHON_CORS_ALLOWED_ORIGIN:http://localhost:3000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # UP/DOWN per component (db, redis) without connection details.
+      show-components: always
