@@ -1,7 +1,6 @@
 package dev.washon.machine.application;
 
 import dev.washon.common.redis.RedisLockService;
-import dev.washon.machine.application.MachineStateCommitService.OcrFrameOutcome;
 import dev.washon.machine.application.TransitionScheduler.Kind;
 import dev.washon.machine.domain.MachineCurrentState;
 import dev.washon.machine.domain.MachineState;
@@ -59,12 +58,7 @@ public class MachineStateService {
     public void handleOcrFrame(String machineId, IngestedOcrFrame frame) {
         withMachineLock(machineId, () -> {
             long seq = frameSeq.merge(machineId, 1L, Long::sum);
-            OcrFrameOutcome outcome = commits.applyOcrFrame(machineId, frame);
-            if (outcome == OcrFrameOutcome.TRANSITIONED_TO_DONE) {
-                scheduleDoneRelease(machineId);
-            } else if (outcome == OcrFrameOutcome.TRANSITIONED) {
-                scheduler.cancel(machineId, Kind.DONE);
-            }
+            commits.applyOcrFrame(machineId, frame);
             scheduleStalenessCheck(machineId, seq);
         });
     }
@@ -85,20 +79,13 @@ public class MachineStateService {
         return callWithMachineLock(machineId, () -> commits.commitOverrideClear(machineId, auditDetail));
     }
 
-    private void scheduleDoneRelease(String machineId) {
-        scheduler.schedule(machineId, Kind.DONE, properties.doneToAvailable(),
-                () -> withMachineLock(machineId, () -> commits.releaseDone(machineId)));
-    }
-
     private void scheduleStalenessCheck(String machineId, long seq) {
         scheduler.schedule(machineId, Kind.STALE, properties.staleUnknown(), () -> withMachineLock(machineId, () -> {
             Long latest = frameSeq.get(machineId);
             if (latest == null || latest != seq) {
                 return; // a frame landed while we waited for the lock
             }
-            if (commits.demoteStale(machineId)) {
-                scheduler.cancel(machineId, Kind.DONE);
-            }
+            commits.demoteStale(machineId);
         }));
     }
 

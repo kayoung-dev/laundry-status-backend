@@ -8,12 +8,11 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * State machine thresholds, ported from
  * apps/api/src/state-machine/state-machine.config.ts. Overridable (e.g.
- * {@code washon.state-machine.done-to-available=1s} or env
- * {@code WASHON_STATE_MACHINE_DONE_TO_AVAILABLE}) so tests can exercise the
+ * {@code washon.state-machine.stale-unknown=1s} or env
+ * {@code WASHON_STATE_MACHINE_STALE_UNKNOWN}) so tests can exercise the
  * delayed transitions without waiting a real minute; production runs on the
  * defaults below.
  *
- * @param doneToAvailable how long a machine stays {@code done} before returning to {@code available}
  * @param staleUnknown    silence after which a machine's state is no longer trustworthy
  * @param cameraDown      longer silence meaning the camera itself is down (consumed by SB-007)
  * @param cameraDownSweep how often SB-007's camera-down sweep runs
@@ -21,7 +20,6 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  */
 @ConfigurationProperties("washon.state-machine")
 public record StateMachineProperties(
-        @DefaultValue("60s") Duration doneToAvailable,
         @DefaultValue("60s") Duration staleUnknown,
         @DefaultValue("5m") Duration cameraDown,
         @DefaultValue("30s") Duration cameraDownSweep,

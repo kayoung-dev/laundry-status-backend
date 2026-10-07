@@ -10,7 +10,6 @@ package dev.washon.machine.domain;
 public enum MachineState {
     available,
     in_use,
-    done,
     maintenance,
     error,
     unknown

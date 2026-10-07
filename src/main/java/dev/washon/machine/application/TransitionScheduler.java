@@ -22,8 +22,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class TransitionScheduler implements DisposableBean {
 
-    /** {@code DONE}: done -> available after the grace period; {@code STALE}: no frames -> unknown. */
-    public enum Kind { DONE, STALE }
+    /** {@code STALE}: no frames -> unknown. */
+    public enum Kind { STALE }
 
     private static final Logger log = LoggerFactory.getLogger(TransitionScheduler.class);
 
