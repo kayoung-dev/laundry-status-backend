@@ -45,6 +45,7 @@ docker-compose.yml       로컬 MariaDB + Redis
 | POST | `/admin/auth/login`, `/admin/auth/logout` | 관리자 로그인/로그아웃 (세션 쿠키) |
 | GET | `/admin/auth/me` | 현재 관리자 |
 | GET | `/admin/machines` | 관리자 대시보드 기기 목록 |
+| GET | `/admin/machines/stream` | 관리자 대시보드 SSE (모든 세탁실의 기기 변경 신호) |
 | POST | `/admin/machines/{id}/override`, `/override/clear` | 상태 수동 지정/해제 |
 | GET | `/admin/machines/{id}/events` | 상태 변경 감사 로그 |
 | GET | `/admin/machines/{id}/needs-check` | "확인 필요" 여부 |
