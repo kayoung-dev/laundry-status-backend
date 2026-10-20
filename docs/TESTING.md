@@ -4,7 +4,7 @@
 
 시드 데이터는 세탁실(`seed-room`) 하나에 세탁기 3대(`seed-machine-1`/`2`/`3`, "Washer 1/2/3")로 구성되어 있어, 기기 간 독립성(한 기기의 상태 변화가 다른 기기에 영향을 주지 않는지)도 같이 확인할 수 있다.
 
-> **이 문서의 명령어는 백엔드 저장소 루트(`laundry-status-backend/`)에서 실행한다고 가정한다.** 프론트엔드는 별도 저장소([laundry-status-front](https://github.com/kayoung-dev/laundry-status-front))이며, 아래 예시는 두 저장소를 같은 상위 디렉토리에 나란히 클론했다고 가정한다(`../frontend`).
+> **이 문서의 명령어는 백엔드 저장소 루트(`laundry-status-backend/`)에서 실행한다고 가정한다.** 프론트엔드는 별도 저장소([laundry-status-front](https://github.com/kayoung-dev/laundry-status-front))이며, 아래 예시는 두 저장소를 같은 상위 디렉토리에 나란히 클론했다고 가정한다(`../laundry-status-front`).
 >
 > 카메라 시뮬레이터는 최초 1회 `npm --prefix tools/camera-simulator install`이 필요하다.
 
@@ -27,7 +27,7 @@ docker compose up -d          # mariadb:3307, redis:6379
 ./gradlew bootRun             # http://localhost:8081
 
 # 4) 프론트엔드
-cd ../frontend
+cd ../laundry-status-front
 NEXT_PUBLIC_API_URL=http://localhost:8081 npm run dev   # http://localhost:3000
 ```
 
@@ -192,7 +192,7 @@ npm --prefix tools/camera-simulator run simulate -- wash-cycle --device-id seed-
 
 프론트엔드는 별도 테스트 스위트 없이 빌드 확인만 한다:
 ```bash
-cd ../frontend && npm run build
+cd ../laundry-status-front && npm run build
 ```
 
 ---
