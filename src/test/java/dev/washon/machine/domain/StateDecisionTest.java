@@ -48,10 +48,10 @@ class StateDecisionTest {
         OcrReading c28 = new OcrReading.Countdown(28);
         OcrReading c31 = new OcrReading.Countdown(31);
 
-        assertThat(StateDecision.decide(List.of(c30, c28), MachineState.unknown)).isNull();
-        assertThat(StateDecision.decide(List.of(c30, c30, c30), MachineState.unknown)).isNull(); // flat
-        assertThat(StateDecision.decide(List.of(c30, c31, c28), MachineState.unknown)).isNull(); // rise
-        assertThat(StateDecision.decide(List.of(c31, c30, c28), MachineState.unknown))
+        assertThat(StateDecision.decide(List.of(c30, c28))).isNull();
+        assertThat(StateDecision.decide(List.of(c30, c30, c30))).isNull(); // flat
+        assertThat(StateDecision.decide(List.of(c30, c31, c28))).isNull(); // rise
+        assertThat(StateDecision.decide(List.of(c31, c30, c28)))
                 .isEqualTo(new StateDecision(MachineState.in_use, 28, null));
     }
 
@@ -62,12 +62,12 @@ class StateDecisionTest {
         OcrReading r16 = new OcrReading.Countdown(16, WashStage.rinse);
         OcrReading plain13 = new OcrReading.Countdown(13); // no stage marker
 
-        assertThat(StateDecision.decide(List.of(w22, w19, w19), MachineState.unknown).stage())
+        assertThat(StateDecision.decide(List.of(w22, w19, w19)).stage())
                 .isEqualTo(WashStage.wash);
 
         // Stage tracks the latest frame, same as remainingMin: a transition into
         // rinse is reflected as soon as it appears, with no consensus of its own.
-        StateDecision decision = StateDecision.decide(List.of(w22, w19, r16), MachineState.in_use);
+        StateDecision decision = StateDecision.decide(List.of(w22, w19, r16));
         assertThat(decision.state()).isEqualTo(MachineState.in_use);
         assertThat(decision.remainingMin()).isEqualTo(16);
         assertThat(decision.stage()).isEqualTo(WashStage.rinse);
@@ -75,19 +75,18 @@ class StateDecisionTest {
         // Plain (non-stage) OCR text must still decide in_use with a null stage:
         // no wrong default, no crash, no regression for text that doesn't use
         // the P2-002 convention.
-        assertThat(StateDecision.decide(List.of(plain13, plain13, new OcrReading.Countdown(10)), MachineState.unknown)
+        assertThat(StateDecision.decide(List.of(plain13, plain13, new OcrReading.Countdown(10)))
                 .stage()).isNull();
     }
 
     @Test
-    void readsADarkDisplayInContextAndLetsTheGracePeriodOwnDone() {
+    void aDarkDisplayMeansAvailableWhetherACycleJustEndedOrItWasAlreadyIdle() {
         OcrReading dark = new OcrReading.Finished();
         OcrReading c2 = new OcrReading.Countdown(2);
+        StateDecision available = new StateDecision(MachineState.available, null, null);
 
-        assertThat(StateDecision.decide(List.of(c2, dark), MachineState.in_use))
-                .isEqualTo(new StateDecision(MachineState.done, 0, null));
-        assertThat(StateDecision.decide(List.of(dark, dark), MachineState.unknown))
-                .isEqualTo(new StateDecision(MachineState.available, null, null));
-        assertThat(StateDecision.decide(List.of(c2, dark), MachineState.done)).isNull();
+        // No "done" state: the cycle ending is the machine becoming free.
+        assertThat(StateDecision.decide(List.of(c2, dark))).isEqualTo(available);
+        assertThat(StateDecision.decide(List.of(dark, dark))).isEqualTo(available);
     }
 }

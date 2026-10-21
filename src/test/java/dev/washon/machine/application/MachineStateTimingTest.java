@@ -38,26 +38,25 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Rewrites apps/api/test/state-machine-timing.e2e-spec.ts: the done grace
- * period and the stale threshold run together on two machines, while the
- * finishing machine's camera keeps reporting a dark display that must neither
- * cut the grace period short nor restart it.
+ * Rewrites apps/api/test/state-machine-timing.e2e-spec.ts for the no-"done"
+ * state model: a finishing machine goes straight to available, and its
+ * camera's keepalive dark frames keep it there (fresh, never stale), while a
+ * silent machine is demoted to unknown after the stale threshold.
  *
- * <p>The original waited out the real 60s production defaults. Here both
- * delays are scaled to {@value #DELAY_MS}ms (keepalive every
- * {@value #KEEPALIVE_INTERVAL_MS}ms, same proportions) so the build does not
- * block for a minute; the 60s defaults themselves are asserted from the
- * property binding in MachineStateServiceTest.
+ * <p>The original waited out the real 60s production default. Here the delay
+ * is scaled to {@value #DELAY_MS}ms (one keepalive after
+ * {@value #KEEPALIVE_AFTER_MS}ms) so the build does not block for a
+ * minute; the 60s default itself is asserted from the property binding in
+ * MachineStateServiceTest.
  */
 @SpringBootTest(properties = {
-        "washon.state-machine.done-to-available=" + MachineStateTimingTest.DELAY_MS + "ms",
         "washon.state-machine.stale-unknown=" + MachineStateTimingTest.DELAY_MS + "ms"})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 class MachineStateTimingTest {
 
     static final long DELAY_MS = 4000;
-    static final long KEEPALIVE_INTERVAL_MS = 1500;
+    static final long KEEPALIVE_AFTER_MS = 2500;
     static final long WAIT_MARGIN_MS = 1200;
 
     private static final AtomicInteger SUFFIX = new AtomicInteger();
@@ -73,45 +72,46 @@ class MachineStateTimingTest {
     @Autowired JdbcTemplate jdbc;
 
     @Test
-    void releasesDoneToAvailableAndDemotesASilentMachineToUnknownAfterTheirDelays() throws Exception {
-        TestCamera finishing = seedCamera("timing-done");
+    void finishesStraightToAvailableAndDemotesASilentMachineToUnknownAfterTheStaleDelay() throws Exception {
+        TestCamera finishing = seedCamera("timing-finish");
         TestCamera silent = seedCamera("timing-stale");
 
         postFrame(finishing, "05");
+        postFrame(finishing, "04");
         postFrame(finishing, "02");
+        assertThat(currentState(finishing).getState()).isEqualTo(MachineState.in_use);
+
+        // The display going dark ends the cycle: available at once, no grace period.
         postFrame(finishing, "");
-        long doneAt = System.currentTimeMillis();
+        MachineCurrentState finished = currentState(finishing);
+        assertThat(finished.getState()).isEqualTo(MachineState.available);
+        assertThat(finished.getRemainingMin()).isNull();
 
         postFrame(silent, "28");
         postFrame(silent, "25");
         postFrame(silent, "22");
-
-        assertThat(currentState(finishing).getState()).isEqualTo(MachineState.done);
         assertThat(currentState(silent).getState()).isEqualTo(MachineState.in_use);
 
-        // Keepalive dark frames on the finishing machine: must neither cut the
-        // grace period short nor restart it. The silent camera says nothing.
-        Thread.sleep(KEEPALIVE_INTERVAL_MS);
+        long silentSince = System.currentTimeMillis();
+
+        // A keepalive dark frame keeps the finished machine fresh (its stale
+        // timer restarts) without re-committing it; the silent camera says
+        // nothing. One keepalive only: the per-camera ingest bucket holds 5
+        // frames and this camera has already sent 4.
+        Thread.sleep(KEEPALIVE_AFTER_MS);
         postFrame(finishing, "");
-        assertThat(currentState(finishing).getState()).isEqualTo(MachineState.done);
+        assertThat(currentState(finishing).getState()).isEqualTo(MachineState.available);
 
-        Thread.sleep(KEEPALIVE_INTERVAL_MS);
-        postFrame(finishing, "");
-        assertThat(currentState(finishing).getState()).isEqualTo(MachineState.done);
-
-        // If the second keepalive had restarted the grace period, release would
-        // only happen at ~2*KEEPALIVE + DELAY, well after this point.
-        Thread.sleep(Math.max(0, doneAt + DELAY_MS + WAIT_MARGIN_MS - System.currentTimeMillis()));
-
-        MachineCurrentState released = currentState(finishing);
-        assertThat(released.getState()).isEqualTo(MachineState.available);
-        assertThat(released.getRemainingMin()).isNull();
+        // Past the silent machine's stale deadline, still before the finished
+        // machine's (restarted by the keepalive above).
+        Thread.sleep(Math.max(0, silentSince + DELAY_MS + WAIT_MARGIN_MS - System.currentTimeMillis()));
+        assertThat(currentState(finishing).getState()).isEqualTo(MachineState.available);
 
         MachineCurrentState stale = currentState(silent);
         assertThat(stale.getState()).isEqualTo(MachineState.unknown);
         assertThat(stale.getStaleSince()).isEqualTo(stale.getLastFrameAt());
 
-        assertThat(systemStates(finishing)).containsExactly("done", "available");
+        assertThat(systemStates(finishing)).containsExactly("in_use", "available");
         assertThat(systemStates(silent)).containsExactly("in_use", "unknown");
     }
 

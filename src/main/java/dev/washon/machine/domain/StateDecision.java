@@ -18,9 +18,8 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
 
     /**
      * Decides the machine state from a window of consecutive readings, oldest
-     * first, with the just-received frame last, plus the state we currently
-     * believe the machine to be in. Returns {@code null} for "not enough
-     * evidence".
+     * first, with the just-received frame last. Returns {@code null} for "not
+     * enough evidence".
      *
      * <p>A countdown needs COUNTDOWN_CONSENSUS_FRAMES consecutive countdown
      * frames that never increase and drop overall before we believe the
@@ -29,13 +28,11 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
      * latest frame alone: those are the states where reacting late is worse
      * than reacting to one bad frame, and a following frame corrects any misread.
      *
-     * <p>{@code finished} is read in context: right after a countdown it means
-     * "the cycle just ended" (-> done, then the grace period releases it to
-     * available), while a display that has simply been dark is an idle machine
-     * (-> available). Without that distinction an untouched machine would flap
-     * done -> available -> done forever.
+     * <p>The system only answers "is it running, and for how long": a dark or
+     * zero display means the machine is free, so {@code finished} goes straight
+     * to {@code available} whether a cycle just ended or it was already idle.
      */
-    public static StateDecision decide(List<OcrReading> window, MachineState currentState) {
+    public static StateDecision decide(List<OcrReading> window) {
         if (window.isEmpty()) {
             return null;
         }
@@ -46,16 +43,7 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
         }
 
         if (latest instanceof OcrReading.Finished) {
-            if (currentState == MachineState.done) {
-                // The done -> available grace period owns this transition; more
-                // dark frames must not cut it short.
-                return null;
-            }
-            boolean cycleJustEnded = window.subList(0, window.size() - 1).stream()
-                    .anyMatch(reading -> reading instanceof OcrReading.Countdown);
-            return cycleJustEnded
-                    ? new StateDecision(MachineState.done, 0, null)
-                    : new StateDecision(MachineState.available, null, null);
+            return new StateDecision(MachineState.available, null, null);
         }
 
         if (latest instanceof OcrReading.Countdown countdown) {

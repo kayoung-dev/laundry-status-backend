@@ -9,13 +9,14 @@
 //
 // Scenarios:
 //   decreasing-countdown  Normal in-use pattern: a washer/dryer counting down.
-//   done                  Countdown reaching near-zero, then a blank/zero display.
+//   finish                Countdown reaching zero, then a blank display: the
+//                         machine goes straight back to available.
 //   error                 An E- or F-prefixed error code appears on the display.
 //   stale                 A couple of normal frames, then the camera goes silent
 //                         (script just stops sending -- staleness detection is a
 //                         receiver-side timeout concern, see US-004).
 //   wash-cycle            P2-002 wash-stage convention: wash -> rinse -> spin ->
-//                         done, using the "W:mm"/"R:mm"/"S:mm" stage-prefixed
+//                         available, using the "W:mm"/"R:mm"/"S:mm" stage-prefixed
 //                         countdown text (see OcrReading.STAGE_PATTERN).
 //
 // Options (env vars or flags, flags take precedence):
@@ -29,7 +30,7 @@
 // Examples:
 //   npm run simulate -- decreasing-countdown
 //   npm run simulate -- error --device-id my-device --api-key abc123
-//   BASE_URL=http://localhost:4000 npm run simulate -- done
+//   BASE_URL=http://localhost:4000 npm run simulate -- finish
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -64,11 +65,14 @@ const SCENARIOS: Record<string, Scenario> = {
       { raw_text: "16", confidence: 0.97, delayMs: 800 },
     ],
   },
-  done: {
-    description: "Countdown reaches near zero, then the display goes blank/zero.",
+  finish: {
+    description: "Countdown reaches zero, then the display goes blank: in_use -> available (no done state).",
     frames: [
+      // 3 frames to cross the in-use consensus threshold first.
       { raw_text: "05", confidence: 0.96, delayMs: 0 },
+      { raw_text: "04", confidence: 0.95, delayMs: 800 },
       { raw_text: "02", confidence: 0.95, delayMs: 800 },
+      // A zero or blank display ends the cycle: available immediately.
       { raw_text: "00", confidence: 0.94, delayMs: 800 },
       { raw_text: "", confidence: 0.9, delayMs: 800 },
     ],
@@ -91,7 +95,7 @@ const SCENARIOS: Record<string, Scenario> = {
   },
   "wash-cycle": {
     description:
-      "P2-002 wash-stage convention: wash -> rinse -> spin -> done, using the stage-prefixed " +
+      "P2-002 wash-stage convention: wash -> rinse -> spin -> available, using the stage-prefixed " +
       'countdown text "W:mm" / "R:mm" / "S:mm" (see backend OcrReading.STAGE_PATTERN).',
     frames: [
       // Wash: 3 frames to cross the in-use consensus threshold (AC1).
@@ -106,8 +110,7 @@ const SCENARIOS: Record<string, Scenario> = {
       // established (see StateDecision.decide).
       { raw_text: "R:9", confidence: 0.96, delayMs: 800 },
       { raw_text: "S:5", confidence: 0.95, delayMs: 800 },
-      // Done: dark display right after a countdown means the cycle just
-      // ended. Longer pause here (both realistic, and to stay under the
+      // End: a dark display means the cycle ended -> available. Longer pause here (both realistic, and to stay under the
       // per-camera ingest rate limit -- OcrIngestService.BUCKET_CAPACITY is
       // 5 frames per burst).
       { raw_text: "", confidence: 0.9, delayMs: 2000 },

@@ -58,19 +58,16 @@ import org.springframework.transaction.annotation.Transactional;
  * MachineStateService -> MachineStateCommitService), with real MariaDB +
  * Redis (Testcontainers).
  *
- * <p>The two delayed transitions are shortened so the suite does not spend a
- * real minute per assertion; MachineStateTimingTest covers the grace-period
- * semantics of the timing spec, and the 60s production defaults are asserted
- * directly from the property binding below.
+ * <p>The stale delay is shortened so the suite does not spend a real minute
+ * per assertion; MachineStateTimingTest covers the timing spec, and the 60s
+ * production default is asserted directly from the property binding below.
  */
 @SpringBootTest(properties = {
-        "washon.state-machine.done-to-available=" + MachineStateServiceTest.DONE_TO_AVAILABLE_MS + "ms",
         "washon.state-machine.stale-unknown=" + MachineStateServiceTest.STALE_UNKNOWN_MS + "ms"})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 class MachineStateServiceTest {
 
-    static final long DONE_TO_AVAILABLE_MS = 1000;
     static final long STALE_UNKNOWN_MS = 5000;
 
     private static final AtomicInteger SUFFIX = new AtomicInteger();
@@ -161,38 +158,36 @@ class MachineStateServiceTest {
     }
 
     @Nested
-    class Ac2BlankOrZeroDisplayToDoneThenAvailable {
+    class Ac2BlankOrZeroDisplayEndsTheCycleStraightToAvailable {
 
         @Test
-        void endsTheCycleOnADarkDisplayAndReleasesToAvailable() throws Exception {
-            TestCamera camera = seedCamera("done");
+        void endsTheCycleOnADarkDisplayStraightToAvailable() throws Exception {
+            TestCamera camera = seedCamera("finish");
 
             postFrame(camera, "05");
+            postFrame(camera, "04");
             postFrame(camera, "02");
+            assertThat(currentState(camera).getState()).isEqualTo(MachineState.in_use);
+
             postFrame(camera, "");
 
-            MachineCurrentState done = currentState(camera);
-            assertThat(done.getState()).isEqualTo(MachineState.done);
-            assertThat(done.getRemainingMin()).isZero();
+            MachineCurrentState finished = currentState(camera);
+            assertThat(finished.getState()).isEqualTo(MachineState.available);
+            assertThat(finished.getRemainingMin()).isNull();
 
-            Thread.sleep(DONE_TO_AVAILABLE_MS + 700);
-
-            MachineCurrentState released = currentState(camera);
-            assertThat(released.getState()).isEqualTo(MachineState.available);
-            assertThat(released.getRemainingMin()).isNull();
-
-            assertThat(systemEvents(camera)).extracting(SystemEvent::state).containsExactly("done", "available");
+            assertThat(systemEvents(camera)).extracting(SystemEvent::state).containsExactly("in_use", "available");
         }
 
         @Test
         void treatsAZeroValueDisplayTheSameAsABlankOne() throws Exception {
             TestCamera camera = seedCamera("zero");
 
+            postFrame(camera, "04");
             postFrame(camera, "03");
             postFrame(camera, "01");
             postFrame(camera, "00");
 
-            assertThat(currentState(camera).getState()).isEqualTo(MachineState.done);
+            assertThat(currentState(camera).getState()).isEqualTo(MachineState.available);
         }
 
         @Test
@@ -268,7 +263,6 @@ class MachineStateServiceTest {
             StateMachineProperties defaults = new Binder()
                     .bindOrCreate("washon.state-machine", StateMachineProperties.class);
             assertThat(defaults.staleUnknown()).isEqualTo(Duration.ofSeconds(60));
-            assertThat(defaults.doneToAvailable()).isEqualTo(Duration.ofSeconds(60));
             assertThat(defaults.cameraDown()).isEqualTo(Duration.ofMinutes(5));
             assertThat(defaults.minConfidence()).isEqualTo(0.5);
         }
@@ -476,16 +470,16 @@ class MachineStateServiceTest {
 
         @Test
         void clearsTheStageOnceTheCycleEndsOnADarkDisplay() throws Exception {
-            TestCamera camera = seedCamera("stage-done");
+            TestCamera camera = seedCamera("stage-finish");
 
             postFrame(camera, "W:20");
             postFrame(camera, "W:16");
             postFrame(camera, "W:12"); // consensus reached -> in_use / wash
-            postFrame(camera, ""); // dark display: cycle just ended -> done
+            postFrame(camera, ""); // dark display: cycle just ended -> available
 
-            MachineCurrentState done = currentState(camera);
-            assertThat(done.getState()).isEqualTo(MachineState.done);
-            assertThat(done.getWashStage()).isNull();
+            MachineCurrentState finished = currentState(camera);
+            assertThat(finished.getState()).isEqualTo(MachineState.available);
+            assertThat(finished.getWashStage()).isNull();
         }
     }
 

@@ -41,7 +41,7 @@ public class AdminService {
 
     /**
      * An override pins a machine to a human-decided state the camera cannot
-     * infer. {@code in_use}/{@code done}/{@code available} are deliberately
+     * infer. {@code in_use}/{@code available} are deliberately
      * excluded: those are the state machine's job, and pinning them would
      * freeze a machine on a value nobody would remember to clear.
      */

@@ -70,7 +70,7 @@ npm --prefix tools/camera-simulator run simulate -- <시나리오> \
 ### 3.1 `available` (사용 가능) — 초기 상태
 - **준비물:** 없음 (시드 직후 3대 모두 `unknown`으로 시작하며, 아래 3.2~3.4 중 하나를 거쳐 `available`로 돌아오는 것이 일반적인 경로)
 - **확인:** 학생 뷰에서 "사용 가능" 배지, 관리자 대시보드에서 `state: available`
-- **참고:** `available`은 `done` 상태에서 60초 경과 후 자동 전이되거나(3.3), 관리자가 오버라이드를 해제할 때(3.7) 돌아오는 상태다. OCR 텍스트로 직접 만드는 시나리오는 없음.
+- **참고:** `available`은 세탁기 화면이 꺼지거나 `00`이 되면 바로 전이되고(3.4), 관리자가 오버라이드를 해제할 때(3.7)도 돌아오는 상태다. 이 시스템은 "동작 중인지 + 남은 시간"만 판단하므로 별도의 완료(`done`) 상태는 없다.
 
 ### 3.2 `in_use` (사용 중) — 정상 카운트다운
 ```bash
@@ -84,18 +84,19 @@ npm --prefix tools/camera-simulator run simulate -- decreasing-countdown --devic
 ```bash
 npm --prefix tools/camera-simulator run simulate -- wash-cycle --device-id seed-device-2 --api-key <키>
 ```
-- **동작:** `W:20→W:16→W:12`(세탁) → `R:9`(헹굼) → `S:5`(탈수) → 빈 화면(완료) 전송
-- **확인:** 학생 뷰에서 상태 라벨이 "🧺 세탁 중" → "💧 헹굼 중" → "🌀 탈수 중" 순서로 바뀌고, 완료 후 "완료(세탁물 확인 필요)"로 전환. 일반 카운트다운(3.2)에는 아이콘이 뜨지 않고 기존 "사용 중"만 표시되어야 함(회귀 확인)
+- **동작:** `W:20→W:16→W:12`(세탁) → `R:9`(헹굼) → `S:5`(탈수) → 빈 화면(동작 종료) 전송
+- **확인:** 학생 뷰에서 상태 라벨이 "🧺 세탁 중" → "💧 헹굼 중" → "🌀 탈수 중" 순서로 바뀌고, 빈 화면 수신 즉시 "사용 가능"으로 전환. 일반 카운트다운(3.2)에는 아이콘이 뜨지 않고 기존 "사용 중"만 표시되어야 함(회귀 확인)
 - **참고:** `W:nn`/`R:nn`/`S:nn`은 실제 OCR 모델이 없는 상태에서 정의한 임시 컨벤션(`OcrReading.STAGE_PATTERN`). 실제 카메라/OCR이 붙으면 이 컨벤션을 그대로 따르거나 파싱 로직을 다시 써야 한다.
 - **자동화 테스트:** `MachineStateServiceTest$Ac7WashStageInferredFromOcrTextConvention`, `StateDecisionTest`
 
-### 3.4 `done` → `available` (완료 후 자동 복귀)
+### 3.4 동작 종료 → `available` (바로 사용 가능)
 ```bash
-npm --prefix tools/camera-simulator run simulate -- done --device-id seed-device-1 --api-key <키>
+npm --prefix tools/camera-simulator run simulate -- finish --device-id seed-device-1 --api-key <키>
 ```
-- **동작:** 05→02→00→빈 화면 순으로 수신 시 `done`으로 전이, **60초 후 자동으로 `available`로 복귀**
-- **확인:** 완료 직후 "완료(세탁물 확인 필요)" 표시 → 60초 뒤 새로고침 없이 "사용 가능"으로 자동 전환되는지 확인 (실제로 60초 기다려야 함 — 급하면 아래 4절의 짧은 대기시간 오버라이드 참고)
-- **자동화 테스트:** `MachineStateServiceTest$Ac2BlankOrZeroDisplayToDoneThenAvailable` (테스트는 60초가 아닌 짧게 오버라이드된 값 사용)
+- **동작:** 05→04→02로 `in_use`가 된 뒤 `00`(또는 빈 화면)을 받으면 **대기 없이 즉시 `available`**
+- **확인:** "사용 중, 남은 시간: 2분" → 새로고침 없이 바로 "사용 가능"으로 전환, 상단 "N대 중 M대 사용 가능" 숫자도 함께 증가
+- **참고:** 시뮬레이터는 프레임을 몇 개만 보내고 멈추므로, 60초 뒤에는 무응답으로 `unknown`(3.6)이 된다. 실제 카메라는 빈 화면 프레임을 계속 보내므로 `available`이 유지된다.
+- **자동화 테스트:** `MachineStateServiceTest$Ac2BlankOrZeroDisplayEndsTheCycleStraightToAvailable`, `MachineStateTimingTest`
 
 ### 3.5 `error` (장애)
 ```bash
@@ -146,16 +147,15 @@ http://localhost:3000/room/seed-room?machine=seed-machine-2
 
 ## 4. 대기시간이 긴 케이스를 빠르게 테스트하기 (선택)
 
-3.4(60초)/3.6(60초)/3.9(5분)는 실제로 기다리면 오래 걸린다. 로컬에서만 짧게 확인하고 싶다면 환경변수로 오버라이드해서 백엔드를 재기동하면 된다:
+3.6(60초)/3.9(5분)는 실제로 기다리면 오래 걸린다. 로컬에서만 짧게 확인하고 싶다면 환경변수로 오버라이드해서 백엔드를 재기동하면 된다:
 
 ```bash
-WASHON_STATE_MACHINE_DONE_TO_AVAILABLE=3s \
 WASHON_STATE_MACHINE_STALE_UNKNOWN=5s \
 WASHON_STATE_MACHINE_CAMERA_DOWN=10s \
 WASHON_STATE_MACHINE_CAMERA_DOWN_SWEEP=2s \
 ./gradlew bootRun
 ```
-정확한 프로퍼티 키는 `src/main/java/dev/washon/machine/application/StateMachineProperties.java` 참고. **운영/기본 실행 시에는 오버라이드 없이(60초/60초/5분 기본값으로) 띄울 것.**
+정확한 프로퍼티 키는 `src/main/java/dev/washon/machine/application/StateMachineProperties.java` 참고. **운영/기본 실행 시에는 오버라이드 없이(60초/5분 기본값으로) 띄울 것.**
 
 ---
 

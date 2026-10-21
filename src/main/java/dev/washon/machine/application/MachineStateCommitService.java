@@ -40,9 +40,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MachineStateCommitService {
 
-    /** What an OCR frame did, so the caller knows which timers to (re)arm after commit. */
-    public enum OcrFrameOutcome { TRANSITIONED_TO_DONE, TRANSITIONED, UNCHANGED }
-
     private final MachineCurrentStateRepository currentStates;
     private final MachineStateEventRepository events;
     private final StateMachineProperties properties;
@@ -60,38 +57,23 @@ public class MachineStateCommitService {
     }
 
     @Transactional
-    public OcrFrameOutcome applyOcrFrame(String machineId, IngestedOcrFrame frame) {
+    public void applyOcrFrame(String machineId, IngestedOcrFrame frame) {
         MachineCurrentState current = loadOrCreate(machineId);
 
         // Admin override wins over inference: keep tracking camera liveness,
         // but the displayed state is frozen.
         if (current.isOverrideActive()) {
             markFresh(current, frame);
-            return OcrFrameOutcome.UNCHANGED;
+            return;
         }
 
-        StateDecision decision = StateDecision.decide(readingWindow(machineId, frame), current.getState());
+        StateDecision decision = StateDecision.decide(readingWindow(machineId, frame));
         if (decision == null || !isChange(current, decision)) {
             markFresh(current, frame);
-            return OcrFrameOutcome.UNCHANGED;
+            return;
         }
 
         commitTransition(current, decision, frame.capturedAt(), null);
-        return decision.state() == MachineState.done
-                ? OcrFrameOutcome.TRANSITIONED_TO_DONE
-                : OcrFrameOutcome.TRANSITIONED;
-    }
-
-    /** done -> available once the grace period passes with the machine still done. */
-    @Transactional
-    public boolean releaseDone(String machineId) {
-        MachineCurrentState current = currentStates.findById(machineId).orElse(null);
-        if (current == null || current.isOverrideActive() || current.getState() != MachineState.done) {
-            return false;
-        }
-        commitTransition(current, new StateDecision(MachineState.available, null, null),
-                current.getLastFrameAt(), current.getStaleSince());
-        return true;
     }
 
     /** Silence for the stale threshold -> unknown; staleSince records the last frame seen. */
@@ -136,7 +118,7 @@ public class MachineStateCommitService {
      * Pins the machine to an admin-chosen state. remainingMin/errorCode are
      * cleared: they describe what the camera read, which no longer applies
      * once a human has taken the machine over. While the override is active,
-     * {@link #applyOcrFrame}, {@link #releaseDone} and {@link #demoteStale}
+     * {@link #applyOcrFrame} and {@link #demoteStale}
      * all leave the displayed state alone.
      *
      * @param auditDetail opaque free-form detail stored in the audit row's
