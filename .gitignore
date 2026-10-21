@@ -53,3 +53,8 @@ logs/
 
 # Node (tools/camera-simulator)
 node_modules/
+
+# AI tool files (kept local only)
+CLAUDE.md
+AGENTS.md
+.claude/
