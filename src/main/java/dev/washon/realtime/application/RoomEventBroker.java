@@ -22,6 +22,8 @@ public class RoomEventBroker {
 
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<Consumer<MachineChangedEvent>>> listenersByRoom =
             new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<Consumer<MachineChangedEvent>> listenersForAllRooms =
+            new CopyOnWriteArrayList<>();
 
     /** Registers a room-filtered listener; returns the unsubscribe action. */
     public Runnable subscribe(String roomId, Consumer<MachineChangedEvent> listener) {
@@ -31,13 +33,21 @@ public class RoomEventBroker {
         return () -> listeners.remove(listener);
     }
 
+    /** Registers a listener for every room (admin dashboard stream); returns the unsubscribe action. */
+    public Runnable subscribeAll(Consumer<MachineChangedEvent> listener) {
+        listenersForAllRooms.add(listener);
+        return () -> listenersForAllRooms.remove(listener);
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onMachineChanged(MachineChangedEvent event) {
         CopyOnWriteArrayList<Consumer<MachineChangedEvent>> listeners = listenersByRoom.get(event.roomId());
-        if (listeners == null) {
-            return;
+        if (listeners != null) {
+            for (Consumer<MachineChangedEvent> listener : listeners) {
+                listener.accept(event);
+            }
         }
-        for (Consumer<MachineChangedEvent> listener : listeners) {
+        for (Consumer<MachineChangedEvent> listener : listenersForAllRooms) {
             listener.accept(event);
         }
     }
