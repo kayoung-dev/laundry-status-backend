@@ -14,24 +14,25 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * (SB-006, dev.washon.admin.api.AdminApi) plus SB-004's needs-check route
  * (dev.washon.report.api.ReportApi).
  *
- * <p>Also declares CORS for the frontend's dev origin (SB-008). The admin
+ * <p>Also declares CORS for the frontend's origins (SB-008). The admin
  * session is an httpOnly cookie, so the frontend's {@code fetch} calls use
  * {@code credentials: "include"}; per the Fetch/CORS spec that only works
- * against a single explicit {@code Access-Control-Allow-Origin} value, never
- * a wildcard, which is why this lists one configurable origin rather than
- * {@code "*"}.
+ * against an explicit {@code Access-Control-Allow-Origin} value, never a
+ * wildcard, which is why this lists configurable origins
+ * ({@code washon.cors.allowed-origins}, comma-separated) rather than
+ * {@code "*"}. Spring echoes back whichever listed origin made the request.
  */
 @Configuration
 public class AdminWebConfig implements WebMvcConfigurer {
 
     private final AdminAuthInterceptor adminAuthInterceptor;
-    private final String allowedOrigin;
+    private final String[] allowedOrigins;
 
     public AdminWebConfig(
             AdminAuthInterceptor adminAuthInterceptor,
-            @Value("${washon.cors.allowed-origin:http://localhost:3000}") String allowedOrigin) {
+            @Value("${washon.cors.allowed-origins:http://localhost:3000}") String[] allowedOrigins) {
         this.adminAuthInterceptor = adminAuthInterceptor;
-        this.allowedOrigin = allowedOrigin;
+        this.allowedOrigins = allowedOrigins;
     }
 
     @Override
@@ -43,7 +44,7 @@ public class AdminWebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins(allowedOrigin)
+                .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);

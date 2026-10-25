@@ -79,7 +79,9 @@ npm --prefix tools/camera-simulator run simulate -- decreasing-countdown
 | `DATABASE_USERNAME` / `DATABASE_PASSWORD` | `washon` / `washon` |
 | `REDIS_URL` | `redis://localhost:6379` |
 | `PORT` | `8081` |
-| `WASHON_CORS_ALLOWED_ORIGIN` | `http://localhost:3000` (단일 origin, `*` 불가) |
+| `WASHON_CORS_ALLOWED_ORIGINS` | `http://localhost:3000` (쉼표로 여러 개, `*` 불가. 예전 이름 `WASHON_CORS_ALLOWED_ORIGIN`도 동작) |
+| `WASHON_FRONTEND_BASE_URL` | `http://localhost:3000` (QR 링크가 가리키는 프론트 주소) |
+| `WASHON_MQTT_ENABLED` | `false` (켜면 `WASHON_MQTT_URL`/`_USERNAME`/`_PASSWORD`/`_TOPIC_PREFIX`로 카메라 MQTT 수신) |
 
 상태 머신 대기시간(`washon.state-machine.*`)과 관리자 세션(`washon.admin.session.*`) 설정은 `StateMachineProperties`, `AdminSessionProperties` 참고.
 
@@ -94,4 +96,4 @@ npm --prefix tools/camera-simulator run simulate -- decreasing-countdown
 
 ## 개발 서버 배포
 
-`https://api-dev.washon.com` — VM에서 `./deploy-dev.sh` (Docker Compose + Caddy). 절차는 [docs/DEPLOY.md](docs/DEPLOY.md) 참고.
+`https://api-dev.washon.site` — GCP VM의 `/opt/washon/deploy-dev.sh`가 `dev` 브랜치를 받아 이 저장소의 `Dockerfile`로 빌드한다. 환경변수·카메라 MQTT·시드는 [docs/DEPLOY.md](docs/DEPLOY.md) 참고.

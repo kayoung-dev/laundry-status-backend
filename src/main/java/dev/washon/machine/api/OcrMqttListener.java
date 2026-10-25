@@ -29,14 +29,19 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * MQTT counterpart of {@link OcrIngestApi}: subscribes to
- * {@code washon/devices/+/ocr} and hands every frame to the same
- * {@link OcrIngestService}, so API-key authentication, the per-camera rate
- * limit, frame_hash idempotency and the state machine apply exactly as for
- * POST /ingest/ocr.
+ * {@code {prefix}/+/ocr} and hands every frame to the same
+ * {@link OcrIngestService}, so the per-camera rate limit, frame_hash
+ * idempotency and the state machine apply exactly as for POST /ingest/ocr.
  *
- * <p>The device id comes from the topic; a payload {@code device_id} that
- * disagrees is rejected. MQTT has no response channel, so a rejected or
- * malformed frame is logged and dropped. Nothing thrown from
+ * <p>Authentication is the broker's job: every camera has its own broker
+ * account whose user name is its device_id, and the ACL
+ * ({@code pattern write {prefix}/%u/#}) only lets it publish under that id.
+ * The device id is therefore read from the topic and trusted (no API key);
+ * it must still belong to a registered camera, and a payload
+ * {@code device_id} that disagrees is rejected.
+ *
+ * <p>MQTT has no response channel, so a rejected or malformed frame is
+ * logged and dropped. Nothing thrown from
  * {@link #messageArrived} may escape: Paho drops the connection if it does.
  *
  * <p>QoS 1 with a persistent session (fixed client id, cleanSession=false)
@@ -48,8 +53,6 @@ import org.springframework.web.server.ResponseStatusException;
 @ConditionalOnProperty(name = "washon.mqtt.enabled", havingValue = "true")
 public class OcrMqttListener implements SmartLifecycle, MqttCallbackExtended {
 
-    static final String TOPIC_FILTER = "washon/devices/+/ocr";
-    private static final Pattern TOPIC = Pattern.compile("washon/devices/([^/]+)/ocr");
     private static final int QOS = 1;
     private static final long INITIAL_CONNECT_RETRY_SECONDS = 5;
 
@@ -58,6 +61,7 @@ public class OcrMqttListener implements SmartLifecycle, MqttCallbackExtended {
     private final OcrIngestService ocrIngestService;
     private final ObjectMapper objectMapper;
     private final MqttIngestProperties properties;
+    private final Pattern ocrTopic;
     private final ScheduledExecutorService retryExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "mqtt-connect-retry");
         thread.setDaemon(true);
@@ -72,12 +76,13 @@ public class OcrMqttListener implements SmartLifecycle, MqttCallbackExtended {
         this.ocrIngestService = ocrIngestService;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.ocrTopic = Pattern.compile(Pattern.quote(properties.topicPrefix()) + "/([^/]+)/ocr");
     }
 
     @Override
     public void start() {
         try {
-            client = new MqttAsyncClient(properties.url(), properties.clientId(), new MemoryPersistence());
+            client = new MqttAsyncClient(properties.url(), properties.effectiveClientId(), new MemoryPersistence());
         } catch (MqttException e) {
             throw new IllegalStateException("Invalid MQTT configuration: " + properties.url(), e);
         }
@@ -129,11 +134,12 @@ public class OcrMqttListener implements SmartLifecycle, MqttCallbackExtended {
 
     @Override
     public void connectComplete(boolean reconnect, String serverUri) {
-        log.info("MQTT {} to {}; subscribing to {}", reconnect ? "reconnected" : "connected", serverUri, TOPIC_FILTER);
+        String filter = properties.ocrTopicFilter();
+        log.info("MQTT {} to {}; subscribing to {}", reconnect ? "reconnected" : "connected", serverUri, filter);
         try {
-            client.subscribe(TOPIC_FILTER, QOS);
+            client.subscribe(filter, QOS);
         } catch (MqttException e) {
-            log.error("MQTT subscribe to {} failed", TOPIC_FILTER, e);
+            log.error("MQTT subscribe to {} failed", filter, e);
         }
     }
 
@@ -152,7 +158,7 @@ public class OcrMqttListener implements SmartLifecycle, MqttCallbackExtended {
     }
 
     void handle(String topic, byte[] payload) {
-        Matcher matcher = TOPIC.matcher(topic);
+        Matcher matcher = ocrTopic.matcher(topic);
         if (!matcher.matches()) {
             log.warn("Ignoring MQTT message on unexpected topic {}", topic);
             return;
@@ -172,9 +178,9 @@ public class OcrMqttListener implements SmartLifecycle, MqttCallbackExtended {
         }
 
         try {
-            ocrIngestService.ingest(deviceId, message.apiKey(), message.toIngestRequest(deviceId));
+            ocrIngestService.ingestFromBrokerAuthenticatedDevice(deviceId, message.toIngestRequest(deviceId));
         } catch (ResponseStatusException e) {
-            // 401 (bad key / unknown device) or 429 (rate limit), as POST /ingest/ocr would answer.
+            // 401 (device_id not registered as a camera) or 429 (rate limit).
             log.warn("Rejected MQTT OCR frame from {}: {} {}", deviceId, e.getStatusCode().value(), e.getReason());
         }
     }

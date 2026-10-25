@@ -60,12 +60,27 @@ public class OcrIngestService {
     }
 
     public OcrIngestResponse ingest(String deviceId, String apiKey, OcrIngestRequest request) {
-        Camera camera = authenticate(deviceId, apiKey);
+        return rateLimitAndPersist(authenticate(deviceId, apiKey), request);
+    }
 
+    /**
+     * Entry point for frames whose sender the MQTT broker has already
+     * authenticated: each camera logs in with its own broker account (user
+     * name = device_id) and the broker ACL only lets it publish under its own
+     * device_id, so the topic's device_id is trusted and no API key is
+     * checked. The rate limit and everything after it are the same as
+     * {@link #ingest}.
+     */
+    public OcrIngestResponse ingestFromBrokerAuthenticatedDevice(String deviceId, OcrIngestRequest request) {
+        Camera camera = cameras.findByDeviceId(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unknown device_id"));
+        return rateLimitAndPersist(camera, request);
+    }
+
+    private OcrIngestResponse rateLimitAndPersist(Camera camera, OcrIngestRequest request) {
         if (!rateLimiter.tryConsume("ingest:" + camera.getId(), BUCKET_CAPACITY, REFILL_INTERVAL)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests");
         }
-
         return persist(camera, request);
     }
 

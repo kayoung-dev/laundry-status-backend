@@ -1,7 +1,7 @@
 // Mock camera simulator (US-003).
 //
 // Sends a canned sequence of OCR payloads to POST /ingest/ocr -- or, with
-// --mqtt-url, publishes them to washon/devices/{device_id}/ocr over MQTT --
+// --mqtt-url, publishes them to {prefix}/{device_id}/ocr over MQTT --
 // so backend (and later frontend) work can proceed without a real camera or
 // the AI OCR engine sitting behind it.
 //
@@ -23,22 +23,24 @@
 // Options (env vars or flags, flags take precedence):
 //   --device-id <id>     Camera device_id to send as (default: seed-device-1,
 //                         env DEVICE_ID)
-//   --api-key <key>      X-Api-Key header value (default: read from
+//   --api-key <key>      X-Api-Key header value, HTTP only (default: read from
 //                         backend/.seed-api-key, or env API_KEY)
 //   --base-url <url>     Base URL of the running backend/ instance
 //                         (default: http://localhost:8081, env BASE_URL)
 //   --mqtt-url <url>     Publish over MQTT instead of HTTP, e.g.
-//                         wss://api-dev.washon.com/mqtt (env MQTT_URL)
-//   --mqtt-username <u>  Broker account (default: washon-camera, env MQTT_USERNAME)
-//   --mqtt-password <p>  Broker password (env MQTT_PASSWORD; MQTT_CAMERA_PASSWORD
-//                         in the dev server's .env)
+//                         mqtts://mqtt.washon.site:8883 (env MQTT_URL)
+//   --mqtt-username <u>  Broker account (default: the device id -- each camera
+//                         has its own account, env MQTT_USERNAME)
+//   --mqtt-password <p>  That account's password (env MQTT_PASSWORD)
+//   --topic-prefix <p>   Topic prefix (default: dev/washon, env MQTT_TOPIC_PREFIX);
+//                         frames go to {prefix}/{device_id}/ocr
 //
 // Examples:
 //   npm run simulate -- decreasing-countdown
 //   npm run simulate -- error --device-id my-device --api-key abc123
 //   BASE_URL=http://localhost:4000 npm run simulate -- finish
-//   MQTT_PASSWORD=... npm run simulate -- wash-cycle --mqtt-url wss://api-dev.washon.com/mqtt \
-//     --device-id seed-device-1 --api-key <key>
+//   MQTT_PASSWORD=... npm run simulate -- wash-cycle --mqtt-url mqtts://mqtt.washon.site:8883 \
+//     --device-id wm-test
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -138,6 +140,7 @@ function parseArgs(argv: string[]) {
     else if (arg === "--mqtt-url") opts.mqttUrl = argv[++i];
     else if (arg === "--mqtt-username") opts.mqttUsername = argv[++i];
     else if (arg === "--mqtt-password") opts.mqttPassword = argv[++i];
+    else if (arg === "--topic-prefix") opts.topicPrefix = argv[++i];
     else {
       console.error(`Unknown argument: ${arg}`);
       process.exit(1);
@@ -191,16 +194,17 @@ function httpTransport(baseUrl: string, apiKey: string): Transport {
   };
 }
 
-// MQTT has no response: a frame the backend rejects (bad key, rate limit) only
-// shows up in the backend log. QoS 1 means the broker acknowledged receipt.
-async function mqttTransport(url: string, username: string, password: string | undefined, deviceId: string,
-    apiKey: string): Promise<Transport> {
-  const topic = `washon/devices/${deviceId}/ocr`;
+// MQTT has no response: a frame the backend rejects (unregistered device,
+// rate limit) only shows up in the backend log. QoS 1 means the broker
+// acknowledged receipt. The broker authenticates the camera, so no API key.
+async function mqttTransport(url: string, username: string, password: string | undefined, topicPrefix: string,
+    deviceId: string): Promise<Transport> {
+  const topic = `${topicPrefix}/${deviceId}/ocr`;
   const client = await mqtt.connectAsync(url, { username, password, reconnectPeriod: 0, connectTimeout: 10_000 });
   return {
     target: `MQTT ${url} topic ${topic}`,
     async send(payload) {
-      await client.publishAsync(topic, JSON.stringify({ api_key: apiKey, ...payload }), { qos: 1 });
+      await client.publishAsync(topic, JSON.stringify(payload), { qos: 1 });
       return "published (QoS 1 acked by broker)";
     },
     async close() {
@@ -225,7 +229,9 @@ async function main() {
   const apiKey = opts.apiKey ?? process.env.API_KEY ?? readSeedApiKey();
   const baseUrl = opts.baseUrl ?? process.env.BASE_URL ?? "http://localhost:8081";
 
-  if (!apiKey) {
+  const mqttUrl = opts.mqttUrl ?? process.env.MQTT_URL;
+
+  if (!mqttUrl && !apiKey) {
     console.error(
       "No API key found. Pass --api-key, set API_KEY, or run the backend with " +
         "--spring.profiles.active=seed to generate backend/.seed-api-key.",
@@ -233,11 +239,11 @@ async function main() {
     process.exit(1);
   }
 
-  const mqttUrl = opts.mqttUrl ?? process.env.MQTT_URL;
   const transport = mqttUrl
-    ? await mqttTransport(mqttUrl, opts.mqttUsername ?? process.env.MQTT_USERNAME ?? "washon-camera",
-        opts.mqttPassword ?? process.env.MQTT_PASSWORD, deviceId, apiKey)
-    : httpTransport(baseUrl, apiKey);
+    ? await mqttTransport(mqttUrl, opts.mqttUsername ?? process.env.MQTT_USERNAME ?? deviceId,
+        opts.mqttPassword ?? process.env.MQTT_PASSWORD,
+        opts.topicPrefix ?? process.env.MQTT_TOPIC_PREFIX ?? "dev/washon", deviceId)
+    : httpTransport(baseUrl, apiKey!);
 
   const scenario = SCENARIOS[scenarioName];
 

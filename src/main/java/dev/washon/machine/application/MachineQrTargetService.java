@@ -29,7 +29,7 @@ public class MachineQrTargetService {
 
     public MachineQrTargetService(
             MachineRepository machines,
-            @Value("${washon.cors.allowed-origin:http://localhost:3000}") String frontendOrigin) {
+            @Value("${washon.frontend.base-url:http://localhost:3000}") String frontendOrigin) {
         this.machines = machines;
         this.frontendOrigin = frontendOrigin;
     }
