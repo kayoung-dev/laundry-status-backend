@@ -65,11 +65,15 @@ public class AdminAuthApi {
     /**
      * httpOnly keeps the token out of reach of page scripts (so an XSS in the
      * dashboard cannot exfiltrate a session); SameSite=Lax is enough because
-     * frontend/ and backend/ are same-site in dev/Phase 1.
+     * frontend/ and backend/ are same-site in dev/Phase 1 (also on the dev
+     * server: dev.washon.com and api-dev.washon.com share washon.com).
+     * Secure is on wherever the API is served over HTTPS
+     * (washon.admin.session.secure-cookie, set by the dev profile).
      */
     private ResponseCookie sessionCookie(String value, Duration maxAge) {
         return ResponseCookie.from(SessionTokenService.COOKIE_NAME, value)
                 .httpOnly(true)
+                .secure(sessionTokenService.secureCookie())
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(maxAge)

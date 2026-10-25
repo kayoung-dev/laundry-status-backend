@@ -1,0 +1,18 @@
+# TLS certificates for {$API_DOMAIN} are issued and renewed automatically
+# (Let's Encrypt). The domain's DNS A record must point at this VM and ports
+# 80/443 must be open before the first start.
+
+{$API_DOMAIN} {
+	# Cameras: MQTT over WebSocket (wss://{$API_DOMAIN}/mqtt).
+	handle /mqtt* {
+		reverse_proxy mosquitto:9001
+	}
+
+	# No `encode` here: compressing would buffer SSE streams
+	# (/rooms/{id}/stream, /admin/machines/stream).
+	handle {
+		reverse_proxy backend:8081 {
+			flush_interval -1
+		}
+	}
+}

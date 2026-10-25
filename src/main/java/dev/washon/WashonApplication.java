@@ -4,6 +4,7 @@ import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
@@ -17,6 +18,13 @@ public class WashonApplication {
         // the JDBC boundary UTC as well (hibernate.jdbc.time_zone=UTC covers
         // Hibernate itself).
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-        SpringApplication.run(WashonApplication.class, args);
+        ConfigurableApplicationContext context = SpringApplication.run(WashonApplication.class, args);
+
+        // The `seed` profile has no web server but the scheduler thread pools
+        // (@EnableScheduling, TransitionScheduler) would keep the JVM alive
+        // after DevSeedRunner finishes; exit explicitly so seeding terminates.
+        if (context.getEnvironment().matchesProfiles("seed")) {
+            System.exit(SpringApplication.exit(context));
+        }
     }
 }

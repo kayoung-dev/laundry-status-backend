@@ -13,6 +13,11 @@ build/
 # local config overrides / env
 .env
 .env.*
+!.env.example
+
+# dev server: generated mosquitto password file, seed output (deploy-dev.sh / docs/DEPLOY.md)
+deploy/dev/mosquitto/passwd
+.seed-out/
 application-local.yml
 application-local.properties
 

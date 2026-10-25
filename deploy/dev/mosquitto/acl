@@ -1,0 +1,12 @@
+# Account names are fixed; their passwords come from .env (deploy-dev.sh).
+#
+# Cameras share one publish-only account. Each message still carries the
+# camera's own API key, which the backend checks exactly like
+# POST /ingest/ocr's X-Api-Key, so one camera cannot report for another.
+# Write-only also means a camera cannot read other cameras' messages (keys).
+
+user washon-backend
+topic read washon/devices/+/ocr
+
+user washon-camera
+topic write washon/devices/+/ocr

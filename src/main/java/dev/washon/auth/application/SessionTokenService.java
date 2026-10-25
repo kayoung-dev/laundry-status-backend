@@ -39,16 +39,22 @@ public class SessionTokenService {
 
     private final String secret;
     private final Duration ttl;
+    private final boolean secureCookie;
     private final ObjectMapper objectMapper;
 
     public SessionTokenService(AdminSessionProperties properties, ObjectMapper objectMapper) {
         this.secret = properties.secret();
         this.ttl = properties.ttl();
+        this.secureCookie = properties.secureCookie();
         this.objectMapper = objectMapper;
     }
 
     public Duration ttl() {
         return ttl;
+    }
+
+    public boolean secureCookie() {
+        return secureCookie;
     }
 
     public String createToken(AuthenticatedAdmin admin, Instant expiresAt) {
