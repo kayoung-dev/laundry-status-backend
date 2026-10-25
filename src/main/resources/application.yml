@@ -39,9 +39,16 @@ server:
 
 washon:
   cors:
-    # Single explicit origin (never "*") because the admin session cookie is
-    # sent with credentials: "include" (dev.washon.common.web.AdminWebConfig).
-    allowed-origin: ${WASHON_CORS_ALLOWED_ORIGIN:http://localhost:3000}
+    # Explicit origins, comma-separated (never "*") because the admin session
+    # cookie is sent with credentials: "include"
+    # (dev.washon.common.web.AdminWebConfig). Set via
+    # WASHON_CORS_ALLOWED_ORIGINS; the older single-origin
+    # WASHON_CORS_ALLOWED_ORIGIN still works as the default.
+    allowed-origins: ${WASHON_CORS_ALLOWED_ORIGIN:http://localhost:3000}
+  frontend:
+    # Where QR stickers send students (MachineQrTargetService). Set via
+    # WASHON_FRONTEND_BASE_URL.
+    base-url: ${WASHON_CORS_ALLOWED_ORIGIN:http://localhost:3000}
 
 management:
   endpoints:

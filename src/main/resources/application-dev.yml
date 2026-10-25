@@ -1,6 +1,6 @@
-# `dev` profile: the dev server (docker-compose.dev.yml), behind Caddy over HTTPS.
-# Connection settings and secrets come from environment variables set by the
-# compose file; see .env.example.
+# `dev` profile: the dev server (GCP VM, /opt/washon/dev/compose.yml), behind
+# Caddy over HTTPS. Connection settings and secrets come from environment
+# variables set by that compose file; see docs/DEPLOY.md.
 server:
   # Caddy terminates TLS; trust its X-Forwarded-* headers so the app sees
   # the original https scheme and host.
@@ -12,5 +12,5 @@ washon:
       secure-cookie: true
   mqtt:
     # Camera OCR frames over MQTT (dev.washon.machine.api.OcrMqttListener).
-    # url/username/password: WASHON_MQTT_* from docker-compose.dev.yml.
+    # url/username/password/topic-prefix: WASHON_MQTT_* from the compose file.
     enabled: true

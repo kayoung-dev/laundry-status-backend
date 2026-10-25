@@ -1,5 +1,6 @@
-# Backend image for the dev server (docker-compose.dev.yml). Tests are not run
-# here: they need Docker (Testcontainers) and run in CI / locally instead.
+# Backend image, built on the dev server by /opt/washon/deploy-dev.sh
+# (docs/DEPLOY.md). Tests are not run here: they need Docker (Testcontainers)
+# and run in CI / locally instead.
 
 FROM eclipse-temurin:17-jdk AS build
 WORKDIR /src
@@ -22,5 +23,6 @@ USER washon
 
 # Timestamps are stored as UTC (Instant / DATETIME(3)); pin the JVM zone too.
 ENV TZ=UTC
+# Listens on PORT (default 8081); the dev server sets PORT=8080 for Caddy.
 EXPOSE 8081
 ENTRYPOINT ["java", "-Duser.timezone=UTC", "-jar", "/app/app.jar"]

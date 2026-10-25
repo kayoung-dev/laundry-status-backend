@@ -10,7 +10,6 @@ out
 .seed-out
 logs
 *.log
-deploy
 docs
 tools
 CLAUDE.md

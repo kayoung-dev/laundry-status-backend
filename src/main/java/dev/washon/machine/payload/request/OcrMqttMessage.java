@@ -4,12 +4,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 
 /**
- * MQTT payload a camera publishes to {@code washon/devices/{device_id}/ocr}:
- * the POST /ingest/ocr body plus {@code api_key}, which MQTT has no header
- * for. {@code device_id} is optional here -- the topic is authoritative.
+ * MQTT payload a camera publishes to {@code {prefix}/{device_id}/ocr}: the
+ * POST /ingest/ocr body. {@code device_id} is optional here -- the topic is
+ * authoritative -- and there is no API key: the broker authenticates each
+ * camera with its own account.
  */
 public record OcrMqttMessage(
-        @JsonProperty("api_key") String apiKey,
         @JsonProperty("device_id") String deviceId,
         @JsonProperty("captured_at") Instant capturedAt,
         Double confidence,
