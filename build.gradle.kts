@@ -27,6 +27,8 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     // CUID v1 generator: same id format Prisma's @default(cuid()) produced.
     implementation("io.github.thibaultmeyer:cuid:2.0.5")
+    // MQTT client for camera OCR frames (dev.washon.machine.api.OcrMqttListener).
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")

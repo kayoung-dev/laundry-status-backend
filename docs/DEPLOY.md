@@ -88,7 +88,37 @@ cat .seed-out/.seed-api-keys.txt        # 카메라 device_id=API 키
 
 `.seed-out/`은 git에 올라가지 않는다. 확인 후 안전한 곳에 옮기고 VM에서는 지우는 것을 권장한다.
 
-## 4. 운영 명령
+## 4. 카메라 연결 (MQTT)
+
+카메라는 HTTP(`POST https://api-dev.washon.com/ingest/ocr`, `X-Api-Key` 헤더) 또는 MQTT로 OCR 프레임을 보낸다. 둘 다 백엔드에서 같은 경로(인증·rate limit·중복 제거·상태 머신)로 처리된다.
+
+| 항목 | 값 |
+|---|---|
+| 브로커 | `wss://api-dev.washon.com/mqtt` (MQTT over WebSocket, TLS는 Caddy) |
+| 계정 | `washon-camera` / `.env`의 `MQTT_CAMERA_PASSWORD` (모든 카메라 공용, 발행 전용) |
+| 토픽 | `washon/devices/{device_id}/ocr` |
+| QoS | 1 |
+| 페이로드 | `POST /ingest/ocr` 본문 + `api_key` (카메라별 API 키) |
+
+```json
+{"api_key":"<카메라 API 키>","captured_at":"2026-10-26T01:00:00Z","confidence":0.93,"raw_text":"W 12:34","frame_hash":"a1b2c3d4"}
+```
+
+- 카메라 구분과 인증은 **토픽의 device_id + 페이로드의 api_key**로 한다 (HTTP와 같은 키). 공용 MQTT 계정만으로는 다른 카메라 행세를 할 수 없다.
+- MQTT는 응답이 없다. 키가 틀렸거나 rate limit(5초에 1건, 순간 5건)에 걸린 프레임은 백엔드 로그에만 남는다:
+  ```bash
+  $C logs backend | grep "Rejected MQTT"
+  ```
+- 백엔드가 재시작하는 동안 들어온 QoS 1 메시지는 브로커가 보관했다가 다시 전달한다.
+
+시뮬레이터로 확인 (로컬 PC에서, 시드의 API 키 사용):
+```bash
+npm --prefix tools/camera-simulator install
+MQTT_PASSWORD=<MQTT_CAMERA_PASSWORD> npm --prefix tools/camera-simulator run simulate -- wash-cycle \
+  --mqtt-url wss://api-dev.washon.com/mqtt --device-id seed-device-1 --api-key <seed-device-1 키>
+```
+
+## 5. 운영 명령
 
 ```bash
 C="docker compose -f docker-compose.dev.yml"
@@ -107,7 +137,7 @@ $C exec -T mariadb sh -c 'mariadb-dump -u root -p"$MARIADB_ROOT_PASSWORD" washon
 
 `down -v`는 **DB·Redis·인증서 볼륨까지 삭제**하므로 개발 서버를 완전히 초기화할 때만 쓴다.
 
-## 5. 문제 해결
+## 6. 문제 해결
 
 | 증상 | 확인 |
 |---|---|
@@ -118,3 +148,4 @@ $C exec -T mariadb sh -c 'mariadb-dump -u root -p"$MARIADB_ROOT_PASSWORD" washon
 | 관리자 로그인 후 바로 로그아웃됨 | API를 HTTPS로 호출하는지 (`Secure` 쿠키는 HTTP에서 저장되지 않음) |
 | SSE가 1분쯤 뒤 끊김 | 백엔드가 15초마다 `:ping`을 보내는 버전인지 확인 |
 | MQTT 접속 거부 | `.env`의 MQTT 비밀번호를 바꿨다면 `./deploy-dev.sh` 재실행 (계정 파일 재생성 + mosquitto 재로드) |
+| MQTT 발행은 되는데 상태가 안 바뀜 | `$C logs backend \| grep -E "MQTT\|Rejected"` — 구독 연결 여부, API 키·device_id 거부 여부 |

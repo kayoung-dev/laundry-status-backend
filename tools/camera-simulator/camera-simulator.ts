@@ -1,8 +1,9 @@
 // Mock camera simulator (US-003).
 //
-// Posts a canned sequence of OCR payloads to POST /ingest/ocr, so backend
-// (and later frontend) work can proceed without a real camera or the AI OCR
-// engine sitting behind it.
+// Sends a canned sequence of OCR payloads to POST /ingest/ocr -- or, with
+// --mqtt-url, publishes them to washon/devices/{device_id}/ocr over MQTT --
+// so backend (and later frontend) work can proceed without a real camera or
+// the AI OCR engine sitting behind it.
 //
 // Usage:
 //   npm run simulate -- <scenario> [options]
@@ -26,16 +27,24 @@
 //                         backend/.seed-api-key, or env API_KEY)
 //   --base-url <url>     Base URL of the running backend/ instance
 //                         (default: http://localhost:8081, env BASE_URL)
+//   --mqtt-url <url>     Publish over MQTT instead of HTTP, e.g.
+//                         wss://api-dev.washon.com/mqtt (env MQTT_URL)
+//   --mqtt-username <u>  Broker account (default: washon-camera, env MQTT_USERNAME)
+//   --mqtt-password <p>  Broker password (env MQTT_PASSWORD; MQTT_CAMERA_PASSWORD
+//                         in the dev server's .env)
 //
 // Examples:
 //   npm run simulate -- decreasing-countdown
 //   npm run simulate -- error --device-id my-device --api-key abc123
 //   BASE_URL=http://localhost:4000 npm run simulate -- finish
+//   MQTT_PASSWORD=... npm run simulate -- wash-cycle --mqtt-url wss://api-dev.washon.com/mqtt \
+//     --device-id seed-device-1 --api-key <key>
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import mqtt from "mqtt";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // tools/camera-simulator/ -> backend repo root, where the seed profile writes .seed-api-key.
@@ -126,6 +135,9 @@ function parseArgs(argv: string[]) {
     if (arg === "--device-id") opts.deviceId = argv[++i];
     else if (arg === "--api-key") opts.apiKey = argv[++i];
     else if (arg === "--base-url") opts.baseUrl = argv[++i];
+    else if (arg === "--mqtt-url") opts.mqttUrl = argv[++i];
+    else if (arg === "--mqtt-username") opts.mqttUsername = argv[++i];
+    else if (arg === "--mqtt-password") opts.mqttPassword = argv[++i];
     else {
       console.error(`Unknown argument: ${arg}`);
       process.exit(1);
@@ -148,6 +160,53 @@ function frameHash(deviceId: string, rawText: string, capturedAt: string): strin
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type OcrPayload = {
+  device_id: string;
+  captured_at: string;
+  confidence: number;
+  raw_text: string;
+  frame_hash: string;
+};
+
+/** Sends one frame; resolves to a short result string, rejects on failure. */
+type Transport = { target: string; send(payload: OcrPayload): Promise<string>; close(): Promise<void> };
+
+function httpTransport(baseUrl: string, apiKey: string): Transport {
+  const url = `${baseUrl.replace(/\/$/, "")}/ingest/ocr`;
+  return {
+    target: `POST ${url}`,
+    async send(payload) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
+        body: JSON.stringify(payload),
+      });
+      const bodyText = await response.text();
+      if (!response.ok) throw new Error(`${response.status} ${bodyText}`);
+      return `${response.status} OK ${bodyText}`;
+    },
+    async close() {},
+  };
+}
+
+// MQTT has no response: a frame the backend rejects (bad key, rate limit) only
+// shows up in the backend log. QoS 1 means the broker acknowledged receipt.
+async function mqttTransport(url: string, username: string, password: string | undefined, deviceId: string,
+    apiKey: string): Promise<Transport> {
+  const topic = `washon/devices/${deviceId}/ocr`;
+  const client = await mqtt.connectAsync(url, { username, password, reconnectPeriod: 0, connectTimeout: 10_000 });
+  return {
+    target: `MQTT ${url} topic ${topic}`,
+    async send(payload) {
+      await client.publishAsync(topic, JSON.stringify({ api_key: apiKey, ...payload }), { qos: 1 });
+      return "published (QoS 1 acked by broker)";
+    },
+    async close() {
+      await client.endAsync();
+    },
+  };
 }
 
 async function main() {
@@ -174,11 +233,16 @@ async function main() {
     process.exit(1);
   }
 
+  const mqttUrl = opts.mqttUrl ?? process.env.MQTT_URL;
+  const transport = mqttUrl
+    ? await mqttTransport(mqttUrl, opts.mqttUsername ?? process.env.MQTT_USERNAME ?? "washon-camera",
+        opts.mqttPassword ?? process.env.MQTT_PASSWORD, deviceId, apiKey)
+    : httpTransport(baseUrl, apiKey);
+
   const scenario = SCENARIOS[scenarioName];
-  const url = `${baseUrl.replace(/\/$/, "")}/ingest/ocr`;
 
   console.log(`Scenario: ${scenarioName} -- ${scenario.description}`);
-  console.log(`Target:   POST ${url}`);
+  console.log(`Target:   ${transport.target}`);
   console.log(`Device:   ${deviceId}\n`);
 
   for (const [index, frame] of scenario.frames.entries()) {
@@ -187,7 +251,7 @@ async function main() {
     }
 
     const capturedAt = new Date().toISOString();
-    const payload = {
+    const payload: OcrPayload = {
       device_id: deviceId,
       captured_at: capturedAt,
       confidence: frame.confidence,
@@ -195,31 +259,15 @@ async function main() {
       frame_hash: frameHash(deviceId, frame.raw_text, capturedAt),
     };
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Api-Key": apiKey,
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      console.error(`[frame ${index + 1}/${scenario.frames.length}] request failed:`, err);
-      process.exitCode = 1;
-      continue;
-    }
-
-    const bodyText = await response.text();
     const label = `[frame ${index + 1}/${scenario.frames.length}] raw_text=${JSON.stringify(frame.raw_text)} frame_hash=${payload.frame_hash}`;
-    if (response.ok) {
-      console.log(`${label} -> ${response.status} OK ${bodyText}`);
-    } else {
-      console.error(`${label} -> ${response.status} ${bodyText}`);
+    try {
+      console.log(`${label} -> ${await transport.send(payload)}`);
+    } catch (err) {
+      console.error(`${label} -> ${err instanceof Error ? err.message : err}`);
       process.exitCode = 1;
     }
   }
+  await transport.close();
 
   if (scenarioName === "stale") {
     console.log("\nDone sending frames for 'stale' scenario. Camera now goes silent (script exits).");
