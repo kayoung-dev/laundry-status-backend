@@ -91,3 +91,7 @@ npm --prefix tools/camera-simulator run simulate -- decreasing-countdown
 ```
 
 상태별 수동 테스트 절차는 [docs/TESTING.md](docs/TESTING.md) 참고.
+
+## 개발 서버 배포
+
+`https://api-dev.washon.com` — VM에서 `./deploy-dev.sh` (Docker Compose + Caddy). 절차는 [docs/DEPLOY.md](docs/DEPLOY.md) 참고.

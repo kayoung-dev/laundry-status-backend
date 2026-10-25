@@ -1,0 +1,12 @@
+# `dev` profile: the dev server (docker-compose.dev.yml), behind Caddy over HTTPS.
+# Connection settings and secrets come from environment variables set by the
+# compose file; see .env.example.
+server:
+  # Caddy terminates TLS; trust its X-Forwarded-* headers so the app sees
+  # the original https scheme and host.
+  forward-headers-strategy: framework
+
+washon:
+  admin:
+    session:
+      secure-cookie: true

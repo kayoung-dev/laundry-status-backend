@@ -13,11 +13,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * {@code washon.admin.session.secret}. Managing this secret through a real
  * secrets store is an explicit Phase-1-acceptable gap (plan section 4.7).
  *
- * @param secret HMAC-SHA256 signing key for session tokens
- * @param ttl    how long an issued session stays valid
+ * @param secret       HMAC-SHA256 signing key for session tokens
+ * @param ttl          how long an issued session stays valid
+ * @param secureCookie whether the session cookie carries {@code Secure} (HTTPS-only); off for plain-HTTP local dev
  */
 @ConfigurationProperties("washon.admin.session")
 public record AdminSessionProperties(
         @DefaultValue("washon-dev-admin-session-secret-CHANGE-IN-PRODUCTION") String secret,
-        @DefaultValue("12h") Duration ttl) {
+        @DefaultValue("12h") Duration ttl,
+        @DefaultValue("false") boolean secureCookie) {
 }

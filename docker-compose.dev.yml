@@ -1,0 +1,100 @@
+# Dev server stack: https://api-dev.washon.com
+#
+#   Internet ──443──▶ caddy ──▶ backend:8081 ──▶ mariadb:3306, redis:6379
+#                        └─/mqtt (WebSocket)─▶ mosquitto:9001
+#                                             mosquitto:1883 ◀── backend (internal only)
+#
+# Only Caddy publishes ports. Secrets come from .env (copy .env.example).
+# Deploy with ./deploy-dev.sh rather than running this file by hand: the
+# script also generates the mosquitto password file this stack mounts.
+# The local-development stack is docker-compose.yml, not this file.
+name: washon-dev
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: washon
+      MARIADB_USER: washon
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20
+    restart: unless-stopped
+    volumes:
+      # mosquitto.conf + acl (in git) and passwd, which deploy-dev.sh generates
+      # from MQTT_*_PASSWORD in .env (gitignored). The directory, not single
+      # files, is mounted so a regenerated passwd is visible without recreating.
+      - ./deploy/dev/mosquitto:/mosquitto/config:ro
+      - mosquitto-data:/mosquitto/data
+
+  backend:
+    build: .
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      DATABASE_URL: jdbc:mariadb://mariadb:3306/washon
+      DATABASE_USERNAME: washon
+      DATABASE_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://redis:6379
+      WASHON_CORS_ALLOWED_ORIGIN: ${FRONTEND_ORIGIN:?set FRONTEND_ORIGIN in .env}
+      WASHON_ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?set ADMIN_SESSION_SECRET in .env}
+      WASHON_MQTT_URL: tcp://mosquitto:1883
+      WASHON_MQTT_USERNAME: washon-backend
+      WASHON_MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD:?set MQTT_BACKEND_PASSWORD in .env}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xmx512m}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./deploy/dev/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - mosquitto
+
+volumes:
+  mariadb-data:
+  redis-data:
+  mosquitto-data:
+  caddy-data:
+  caddy-config:
