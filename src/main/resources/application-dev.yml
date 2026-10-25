@@ -10,3 +10,7 @@ washon:
   admin:
     session:
       secure-cookie: true
+  mqtt:
+    # Camera OCR frames over MQTT (dev.washon.machine.api.OcrMqttListener).
+    # url/username/password: WASHON_MQTT_* from docker-compose.dev.yml.
+    enabled: true
