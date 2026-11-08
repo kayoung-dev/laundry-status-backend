@@ -132,6 +132,41 @@ class SignupApiTest {
     }
 
     @Test
+    void verifyChecksTheCodeWithoutUsingItUp() throws Exception {
+        String email = uniqueEmail("handong.ac.kr");
+        String code = sendCode(email);
+        String wrong = code.equals("000000") ? "111111" : "000000";
+
+        postJson("/auth/signup/code/verify", Map.of("email", email, "code", wrong))
+                .andExpect(status().isUnprocessableEntity());
+        postJson("/auth/signup/code/verify", Map.of("email", email.toUpperCase(), "code", code))
+                .andExpect(status().isNoContent());
+        postJson("/auth/signup/code/verify", Map.of("email", email, "code", code))
+                .andExpect(status().isNoContent());
+
+        signup(body(email, code)).andExpect(status().isCreated());
+        // Used up by the sign-up.
+        postJson("/auth/signup/code/verify", Map.of("email", email, "code", code))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void wrongVerifiesCountTowardTheAttemptLimit() throws Exception {
+        String email = uniqueEmail("gmail.com");
+        String code = sendCode(email);
+        String wrong = code.equals("000000") ? "111111" : "000000";
+
+        for (int i = 0; i < 5; i++) {
+            postJson("/auth/signup/code/verify", Map.of("email", email, "code", wrong))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+        postJson("/auth/signup/code/verify", Map.of("email", email, "code", code))
+                .andExpect(status().isUnprocessableEntity());
+        postJson("/auth/signup/code/verify", Map.of("email", "a@naver.com", "code", code))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void signupWithoutACodeGets422() throws Exception {
         signup(body(uniqueEmail("gmail.com"), "123456")).andExpect(status().isUnprocessableEntity());
     }
