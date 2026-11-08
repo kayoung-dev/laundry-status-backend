@@ -33,13 +33,16 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
      * <p>A countdown needs COUNTDOWN_CONSENSUS_FRAMES consecutive countdown
      * frames that never increase and drop overall before we believe the
      * machine is running -- that is the noise filter, a single misread digit
-     * cannot start a cycle. {@code finished} and {@code error} act on the
-     * latest frame alone: those are the states where reacting late is worse
-     * than reacting to one bad frame, and a following frame corrects any misread.
+     * cannot start a cycle. {@code finished}, {@code error} and a camera
+     * fault act on the latest frame alone: those are the states where reacting
+     * late is worse than reacting to one bad frame, and a following frame
+     * corrects any misread.
      *
-     * <p>The system only answers "is it running, and for how long": a dark or
-     * zero display means the machine is free, so {@code finished} goes straight
-     * to {@code available} whether a cycle just ended or it was already idle.
+     * <p>The system only answers "is it running, and for how long": a zero
+     * display means the machine is free, so {@code finished} goes straight to
+     * {@code available} whether a cycle just ended or it was already idle. A
+     * blank reading means the camera cannot see the display, so the state is
+     * {@code unknown} -- never "free".
      */
     public static StateDecision decide(List<OcrReading> window) {
         if (window.isEmpty()) {
@@ -53,6 +56,10 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
 
         if (latest instanceof OcrReading.Finished) {
             return new StateDecision(MachineState.available, null, null);
+        }
+
+        if (latest instanceof OcrReading.CameraFault) {
+            return new StateDecision(MachineState.unknown, null, null);
         }
 
         if (latest instanceof OcrReading.Countdown countdown) {

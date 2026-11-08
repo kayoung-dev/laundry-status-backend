@@ -70,7 +70,7 @@ npm --prefix tools/camera-simulator run simulate -- <시나리오> \
 ### 3.1 `available` (사용 가능) — 초기 상태
 - **준비물:** 없음 (시드 직후 3대 모두 `unknown`으로 시작하며, 아래 3.2~3.4 중 하나를 거쳐 `available`로 돌아오는 것이 일반적인 경로)
 - **확인:** 학생 뷰에서 "사용 가능" 배지, 관리자 대시보드에서 `state: available`
-- **참고:** `available`은 세탁기 화면이 꺼지거나 `00`이 되면 바로 전이되고(3.4), 관리자가 오버라이드를 해제할 때(3.7)도 돌아오는 상태다. 이 시스템은 "동작 중인지 + 남은 시간"만 판단하므로 별도의 완료(`done`) 상태는 없다.
+- **참고:** `available`은 세탁기 화면이 `00`/`0:00`이 되면 바로 전이되고(3.4), 관리자가 오버라이드를 해제할 때(3.7)도 돌아오는 상태다. 이 시스템은 "동작 중인지 + 남은 시간"만 판단하므로 별도의 완료(`done`) 상태는 없다.
 
 ### 3.2 `in_use` (사용 중) — 정상 카운트다운
 ```bash
@@ -84,8 +84,8 @@ npm --prefix tools/camera-simulator run simulate -- decreasing-countdown --devic
 ```bash
 npm --prefix tools/camera-simulator run simulate -- wash-cycle --device-id seed-device-2 --api-key <키>
 ```
-- **동작:** `W:20→W:16→W:12`(세탁) → `R:9`(헹굼) → `S:5`(탈수) → 빈 화면(동작 종료) 전송
-- **확인:** 학생 뷰에서 상태 라벨이 "🧺 세탁 중" → "💧 헹굼 중" → "🌀 탈수 중" 순서로 바뀌고, 빈 화면 수신 즉시 "사용 가능"으로 전환. 일반 카운트다운(3.2)에는 아이콘이 뜨지 않고 기존 "사용 중"만 표시되어야 함(회귀 확인)
+- **동작:** `W:20→W:16→W:12`(세탁) → `R:9`(헹굼) → `S:5`(탈수) → `0:00`(동작 종료) 전송
+- **확인:** 학생 뷰에서 상태 라벨이 "🧺 세탁 중" → "💧 헹굼 중" → "🌀 탈수 중" 순서로 바뀌고, `0:00` 수신 즉시 "사용 가능"으로 전환. 일반 카운트다운(3.2)에는 아이콘이 뜨지 않고 기존 "사용 중"만 표시되어야 함(회귀 확인)
 - **참고:** `W:nn`/`R:nn`/`S:nn`은 실제 OCR 모델이 없는 상태에서 정의한 임시 컨벤션(`OcrReading.STAGE_PATTERN`). 실제 카메라/OCR이 붙으면 이 컨벤션을 그대로 따르거나 파싱 로직을 다시 써야 한다.
 - **자동화 테스트:** `MachineStateServiceTest$Ac7WashStageInferredFromOcrTextConvention`, `StateDecisionTest`
 
@@ -93,9 +93,9 @@ npm --prefix tools/camera-simulator run simulate -- wash-cycle --device-id seed-
 ```bash
 npm --prefix tools/camera-simulator run simulate -- finish --device-id seed-device-1 --api-key <키>
 ```
-- **동작:** 05→04→02로 `in_use`가 된 뒤 `00`(또는 빈 화면)을 받으면 **대기 없이 즉시 `available`**
+- **동작:** 05→04→02로 `in_use`가 된 뒤 `00`/`0:00`을 받으면 **대기 없이 즉시 `available`**. 빈 값(`""`)은 끝남이 아니라 카메라 오류라 `unknown`이 된다 (`camera-fault` 시나리오)
 - **확인:** "사용 중, 남은 시간: 2분" → 새로고침 없이 바로 "사용 가능"으로 전환, 상단 "N대 중 M대 사용 가능" 숫자도 함께 증가
-- **참고:** 시뮬레이터는 프레임을 몇 개만 보내고 멈추므로, 60초 뒤에는 무응답으로 `unknown`(3.6)이 된다. 실제 카메라는 빈 화면 프레임을 계속 보내므로 `available`이 유지된다.
+- **참고:** 시뮬레이터는 프레임을 몇 개만 보내고 멈추므로, 60초 뒤에는 무응답으로 `unknown`(3.6)이 된다. 실제 카메라는 `0:00` 프레임을 계속 보내므로 `available`이 유지된다.
 - **자동화 테스트:** `MachineStateServiceTest$Ac2BlankOrZeroDisplayEndsTheCycleStraightToAvailable`, `MachineStateTimingTest`
 
 ### 3.5 `error` (장애)

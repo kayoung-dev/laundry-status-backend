@@ -10,8 +10,8 @@ class StateDecisionTest {
 
     @Test
     void parsesEveryRecognisedDisplayShape() {
-        assertThat(OcrReading.parse(null)).isEqualTo(new OcrReading.Finished());
-        assertThat(OcrReading.parse("  ")).isEqualTo(new OcrReading.Finished());
+        assertThat(OcrReading.parse(null)).isEqualTo(new OcrReading.CameraFault());
+        assertThat(OcrReading.parse("  ")).isEqualTo(new OcrReading.CameraFault());
         assertThat(OcrReading.parse("00")).isEqualTo(new OcrReading.Finished());
         assertThat(OcrReading.parse("0:00")).isEqualTo(new OcrReading.Finished());
         assertThat(OcrReading.parse("E01")).isEqualTo(new OcrReading.ErrorDisplay("E01"));
@@ -98,13 +98,24 @@ class StateDecisionTest {
     }
 
     @Test
-    void aDarkDisplayMeansAvailableWhetherACycleJustEndedOrItWasAlreadyIdle() {
-        OcrReading dark = new OcrReading.Finished();
+    void aZeroDisplayMeansAvailableWhetherACycleJustEndedOrItWasAlreadyIdle() {
+        OcrReading zero = OcrReading.parse("0:00");
         OcrReading c2 = new OcrReading.Countdown(2);
         StateDecision available = new StateDecision(MachineState.available, null, null);
 
         // No "done" state: the cycle ending is the machine becoming free.
-        assertThat(StateDecision.decide(List.of(c2, dark))).isEqualTo(available);
-        assertThat(StateDecision.decide(List.of(dark, dark))).isEqualTo(available);
+        assertThat(StateDecision.decide(List.of(c2, zero))).isEqualTo(available);
+        assertThat(StateDecision.decide(List.of(zero, zero))).isEqualTo(available);
+    }
+
+    /** A blank reading is the camera failing to read the display, never a finished cycle. */
+    @Test
+    void aBlankReadingIsACameraFaultAndShowsUnknownNotAvailable() {
+        OcrReading blank = OcrReading.parse("");
+        StateDecision unknown = new StateDecision(MachineState.unknown, null, null);
+
+        assertThat(StateDecision.decide(List.of(OcrReading.parse("3:12"), OcrReading.parse("3:11"), blank)))
+                .isEqualTo(unknown);
+        assertThat(StateDecision.decide(List.of(blank))).isEqualTo(unknown);
     }
 }
