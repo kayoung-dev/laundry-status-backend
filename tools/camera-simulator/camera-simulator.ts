@@ -39,8 +39,9 @@
 //   --mqtt-password <p>  That account's password (env MQTT_PASSWORD)
 //   --topic-prefix <p>   Topic prefix (default: dev/washon, env MQTT_TOPIC_PREFIX);
 //                         frames go to {prefix}/{device_id}/ocr
-//   --interval <sec>     esp32 only: seconds between countdown steps (default 5;
-//                         under 5 the backend rate limit drops some ocr frames)
+//   --interval <sec>     esp32 only: seconds between countdown steps (default 1,
+//                         like the real display; under 1 the backend rate limit
+//                         drops some ocr frames)
 //
 // Examples:
 //   npm run simulate -- decreasing-countdown
@@ -341,7 +342,7 @@ async function main() {
       console.error("The esp32 scenario publishes over MQTT: pass --mqtt-url or set MQTT_URL.");
       process.exit(1);
     }
-    const intervalSec = Number(opts.interval ?? 5);
+    const intervalSec = Number(opts.interval ?? 1);
     await runEsp32(mqttUrl, mqttUsername, mqttPassword, topicPrefix, deviceId, intervalSec * 1000);
     return;
   }

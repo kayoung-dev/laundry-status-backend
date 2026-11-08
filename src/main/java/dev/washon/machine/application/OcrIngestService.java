@@ -36,9 +36,10 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class OcrIngestService {
 
-    // At most 1 request per 5 seconds per camera, burst allowance of 5.
+    // At most 1 request per second per camera, burst allowance of 5: an MM:SS
+    // display changes every second, and every reading should reach the screen.
     private static final int BUCKET_CAPACITY = 5;
-    private static final Duration REFILL_INTERVAL = Duration.ofSeconds(5);
+    private static final Duration REFILL_INTERVAL = Duration.ofSeconds(1);
 
     // MariaDB's ER_DUP_ENTRY code (SQLState 23000) for a unique-constraint
     // violation -- NOT Postgres's 23505, which does not apply here.
