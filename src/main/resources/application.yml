@@ -45,12 +45,29 @@ washon:
     # WASHON_CORS_ALLOWED_ORIGINS; the older single-origin
     # WASHON_CORS_ALLOWED_ORIGIN still works as the default.
     allowed-origins: ${WASHON_CORS_ALLOWED_ORIGIN:http://localhost:3000}
+  signup:
+    # Student sign-up (dev.washon.auth.application.SignupProperties). Only
+    # these email domains may sign up; comma-separated via
+    # WASHON_SIGNUP_ALLOWED_EMAIL_DOMAINS.
+    allowed-email-domains: ${WASHON_SIGNUP_ALLOWED_EMAIL_DOMAINS:gmail.com,handong.ac.kr}
+    code-ttl: 5m
+    resend-interval: 60s
+    max-code-attempts: 5
+    mail-from: ${WASHON_MAIL_FROM:WashOn <no-reply@washon.site>}
+    # The code email goes out over SMTP when spring.mail.host is set
+    # (SPRING_MAIL_HOST / _PORT / _USERNAME / _PASSWORD, plus
+    # SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH / _STARTTLS_ENABLE). Without it
+    # the code is only written to the log.
   frontend:
     # Where QR stickers send students (MachineQrTargetService). Set via
     # WASHON_FRONTEND_BASE_URL.
     base-url: ${WASHON_CORS_ALLOWED_ORIGIN:http://localhost:3000}
 
 management:
+  health:
+    mail:
+      # An unreachable SMTP server should not mark the whole API DOWN.
+      enabled: false
   endpoints:
     web:
       exposure:

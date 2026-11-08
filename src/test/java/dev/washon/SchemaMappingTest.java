@@ -49,13 +49,14 @@ class SchemaMappingTest {
     @Autowired JdbcTemplate jdbc;
 
     @Test
-    void flywayCreatedAllNineTablesWithVarcharEnums() {
+    void flywayCreatedAllTablesWithVarcharEnums() {
         assertThat(jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
                         + " AND table_name <> 'flyway_schema_history'",
                 String.class))
                 .containsExactlyInAnyOrder("tenants", "sites", "rooms", "machines", "cameras",
-                        "machine_state_events", "machine_current_states", "student_reports", "admin_users");
+                        "machine_state_events", "machine_current_states", "student_reports", "admin_users",
+                        "users", "signup_codes");
 
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE()"
