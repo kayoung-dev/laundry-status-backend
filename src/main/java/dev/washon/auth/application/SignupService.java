@@ -5,6 +5,7 @@ import dev.washon.auth.domain.StudentUser;
 import dev.washon.auth.infrastructure.SignupCodeRepository;
 import dev.washon.auth.infrastructure.StudentUserRepository;
 import dev.washon.auth.payload.request.SignupCodeRequest;
+import dev.washon.auth.payload.request.SignupCodeVerifyRequest;
 import dev.washon.auth.payload.request.SignupRequest;
 import dev.washon.auth.payload.response.SignupResponse;
 import dev.washon.common.crypto.ScryptUtil;
@@ -22,9 +23,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Student sign-up in two calls: {@link #sendCode} emails a 6-digit code to
- * an address on an allowed domain, {@link #signup} checks that code and
- * creates the account.
+ * Student sign-up: {@link #sendCode} emails a 6-digit code to an address on
+ * an allowed domain, {@link #verifyCode} lets the form check it right away
+ * (without using it up), and {@link #signup} checks it again and creates the
+ * account.
  *
  * <p>Status codes the frontend tells apart: 400 invalid input or a domain
  * that may not sign up, 409 email already registered, 422 wrong / expired /
@@ -85,6 +87,11 @@ public class SignupService {
             codes.deleteById(email);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Could not send the code email", e);
         }
+    }
+
+    /** 204 when {@code code} is the live code for the address; a wrong one counts toward the attempt limit. */
+    public void verifyCode(SignupCodeVerifyRequest request) {
+        checkCode(allowedEmail(request.email()), request.code());
     }
 
     public SignupResponse signup(SignupRequest request) {

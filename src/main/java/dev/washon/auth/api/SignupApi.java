@@ -2,6 +2,7 @@ package dev.washon.auth.api;
 
 import dev.washon.auth.application.SignupService;
 import dev.washon.auth.payload.request.SignupCodeRequest;
+import dev.washon.auth.payload.request.SignupCodeVerifyRequest;
 import dev.washon.auth.payload.request.SignupRequest;
 import dev.washon.auth.payload.response.SignupResponse;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,13 @@ public class SignupApi {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void sendCode(@RequestBody SignupCodeRequest request) {
         signupService.sendCode(request);
+    }
+
+    /** Checks a code without using it up; 204 when right, 422 when wrong or expired. */
+    @PostMapping("/code/verify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void verifyCode(@RequestBody SignupCodeVerifyRequest request) {
+        signupService.verifyCode(request);
     }
 
     @PostMapping
