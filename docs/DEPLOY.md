@@ -65,7 +65,7 @@ git switch dev && git merge --ff-only main && git push    # 또는 main → dev 
 
 - 기기 인증은 브로커가 한다. ACL(`pattern write dev/washon/%u/#`) 때문에 기기는 자기 ID 토픽에만 쓸 수 있으므로, 백엔드는 토픽의 기기 ID를 그대로 믿는다.
 - 단, 그 기기 ID가 **DB `cameras.device_id`에 등록돼 있어야** 한다. 등록 안 된 기기의 메시지는 버린다 (`Rejected MQTT OCR frame from wm-xxx: 401 Unknown device_id`).
-- 카메라별 rate limit(5초에 1건, 순간 5건), frame_hash 중복 제거, 상태 머신은 HTTP와 같다.
+- 카메라별 rate limit(1초에 1건, 순간 5건), frame_hash 중복 제거, 상태 머신은 HTTP와 같다.
 - MQTT는 응답이 없어서 거부된 메시지는 백엔드 로그에만 남는다: `docker logs dev-app | grep "Rejected MQTT"`
 - 백엔드가 재시작하는 동안 온 QoS 1 메시지는 브로커가 보관했다가 전달한다.
 - HTTP(`POST /ingest/ocr`)는 기존대로 `X-Api-Key`가 필요하다.
