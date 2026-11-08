@@ -52,6 +52,10 @@ public class MachineCurrentState {
     @Column(name = "remaining_min")
     private Integer remainingMin;
 
+    /** Exact time left when the display shows seconds ("3:10"); null for minutes-only displays. */
+    @Column(name = "remaining_sec")
+    private Integer remainingSec;
+
     /** P2-002: which part of the wash cycle is running (null when not in_use, or unknown -- see OcrReading). */
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)

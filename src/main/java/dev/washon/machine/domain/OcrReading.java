@@ -17,12 +17,29 @@ public sealed interface OcrReading {
      * @param stage null for the plain countdown format ("23"); non-null when
      *        {@code rawText} used the P2-002 stage-prefix convention (see
      *        {@link #STAGE_PATTERN}) and the machine is mid-cycle.
+     * @param remainingSec the exact time left when the display shows seconds
+     *        ("3:10" -> 190); null when it only shows minutes ("23", "W:22").
+     *        {@code remainingMin} is then those seconds rounded up.
      */
-    record Countdown(int remainingMin, WashStage stage) implements OcrReading {
+    record Countdown(int remainingMin, WashStage stage, Integer remainingSec) implements OcrReading {
 
         /** Plain countdown, no stage information (the pre-P2-002 shape: "23"). */
         public Countdown(int remainingMin) {
-            this(remainingMin, null);
+            this(remainingMin, null, null);
+        }
+
+        public Countdown(int remainingMin, WashStage stage) {
+            this(remainingMin, stage, null);
+        }
+
+        /** An "MM:SS" display: minutes are the seconds rounded up. */
+        public static Countdown ofSeconds(int remainingSec) {
+            return new Countdown((remainingSec + 59) / 60, null, remainingSec); // ceil(seconds / 60)
+        }
+
+        /** Time left in seconds, exact or (minutes-only display) at minute precision, for comparing frames. */
+        public int secondsLeft() {
+            return remainingSec != null ? remainingSec : remainingMin * 60;
         }
     }
 
@@ -60,9 +77,9 @@ public sealed interface OcrReading {
      * <p>Recognised shapes: blank/zero display ("", "0", "00", "0:00") ->
      * finished; E/F-prefixed codes ("E01", "F-21", "f 3") -> error;
      * stage-prefixed countdown ("W:22", "R:8", "S:3", see
-     * {@link #STAGE_PATTERN}) -> countdown with a known stage; "MM:SS" or
-     * plain minutes ("23") -> countdown with stage == null. Anything else is
-     * noise.
+     * {@link #STAGE_PATTERN}) -> countdown with a known stage; "MM:SS"
+     * ("3:10") -> countdown with exact seconds; plain minutes ("23") ->
+     * countdown with stage == null. Anything else is noise.
      */
     static OcrReading parse(String rawText) {
         String text = (rawText == null ? "" : rawText).strip().toUpperCase(Locale.ROOT);
@@ -91,7 +108,7 @@ public sealed interface OcrReading {
             if (totalSeconds == 0) {
                 return new Finished();
             }
-            return new Countdown((totalSeconds + 59) / 60); // ceil(seconds / 60)
+            return Countdown.ofSeconds(totalSeconds);
         }
 
         if (MINUTES_PATTERN.matcher(compact).matches()) {

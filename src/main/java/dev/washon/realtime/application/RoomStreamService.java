@@ -121,6 +121,7 @@ public class RoomStreamService {
                     machine.getLabel(),
                     state != null ? state.getState() : MachineState.unknown,
                     state != null ? state.getRemainingMin() : null,
+                    state != null ? state.getRemainingSec() : null,
                     state != null ? state.getErrorCode() : null,
                     state != null ? state.getWashStage() : null,
                     state != null && state.isOverrideActive(),
@@ -132,6 +133,6 @@ public class RoomStreamService {
 
     private static MachineChangedResponse toChangedResponse(MachineChangedEvent event) {
         return new MachineChangedResponse(event.machineId(), event.state(), event.remainingMin(),
-                event.errorCode(), event.washStage(), event.version(), event.updatedAt());
+                event.remainingSec(), event.errorCode(), event.washStage(), event.version(), event.updatedAt());
     }
 }

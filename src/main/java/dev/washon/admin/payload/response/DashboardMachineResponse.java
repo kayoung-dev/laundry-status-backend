@@ -20,6 +20,7 @@ public record DashboardMachineResponse(
         String roomName,
         MachineState state,
         Integer remainingMin,
+        Integer remainingSec,
         String errorCode,
         boolean overrideActive,
         String overrideBy,

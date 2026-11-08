@@ -5,15 +5,24 @@ import java.util.List;
 /**
  * The state a window of OCR readings implies. Ported from
  * apps/api/src/state-machine/ocr-reading.ts#decideState.
+ *
+ * <p>{@code remainingSec} is set only when the display shows seconds
+ * ("3:10"); see {@link OcrReading.Countdown}.
  */
-public record StateDecision(MachineState state, Integer remainingMin, String errorCode, WashStage stage) {
+public record StateDecision(MachineState state, Integer remainingMin, String errorCode, WashStage stage,
+        Integer remainingSec) {
 
     /** How many consecutive frames must agree before we declare {@code in_use}. */
     public static final int COUNTDOWN_CONSENSUS_FRAMES = 3;
 
     /** Convenience constructor for decisions that never carry a wash stage (every state but in_use). */
     public StateDecision(MachineState state, Integer remainingMin, String errorCode) {
-        this(state, remainingMin, errorCode, null);
+        this(state, remainingMin, errorCode, null, null);
+    }
+
+    /** Convenience constructor for decisions without seconds (minutes-only displays). */
+    public StateDecision(MachineState state, Integer remainingMin, String errorCode, WashStage stage) {
+        this(state, remainingMin, errorCode, stage, null);
     }
 
     /**
@@ -56,7 +65,7 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
                 if (!(recent.get(i) instanceof OcrReading.Countdown c)) {
                     return null;
                 }
-                values[i] = c.remainingMin();
+                values[i] = c.secondsLeft(); // seconds, so an "MM:SS" display counts as dropping between minutes
             }
             for (int i = 1; i < values.length; i++) {
                 if (values[i] > values[i - 1]) {
@@ -69,7 +78,8 @@ public record StateDecision(MachineState state, Integer remainingMin, String err
             // Stage is read from the latest frame only: it needs no consensus of
             // its own, the same way remainingMin always tracks the latest frame
             // once the countdown consensus itself is established.
-            return new StateDecision(MachineState.in_use, countdown.remainingMin(), null, countdown.stage());
+            return new StateDecision(MachineState.in_use, countdown.remainingMin(), null, countdown.stage(),
+                    countdown.remainingSec());
         }
 
         return null; // noise

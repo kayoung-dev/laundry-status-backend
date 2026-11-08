@@ -12,6 +12,7 @@ public record MachineSnapshotItem(
         String label,
         MachineState state,
         Integer remainingMin,
+        Integer remainingSec,
         String errorCode,
         WashStage washStage,
         boolean overrideActive,
