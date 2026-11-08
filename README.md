@@ -27,8 +27,9 @@ src/main/java/dev/washon/
 src/main/resources/
   application.yml, application-seed.yml
   db/migration/        Flyway 마이그레이션 (V1__init.sql, ...)
-tools/camera-simulator/  목(mock) 카메라: OCR 페이로드를 POST /ingest/ocr로 전송
+tools/camera-simulator/  목(mock) 카메라: OCR 페이로드를 POST /ingest/ocr 또는 MQTT로 전송 (esp32 시나리오 포함)
 docs/TESTING.md          상태별 수동 테스트 가이드
+docs/ESP32-MQTT.md       ESP32-CAM MQTT 연동 규격
 docker-compose.yml       로컬 MariaDB + Redis
 ```
 
