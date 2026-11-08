@@ -19,6 +19,11 @@
 //   wash-cycle            P2-002 wash-stage convention: wash -> rinse -> spin ->
 //                         available, using the "W:mm"/"R:mm"/"S:mm" stage-prefixed
 //                         countdown text (see OcrReading.STAGE_PATTERN).
+//   esp32                 MQTT only: behaves like the ESP32-CAM in
+//                         docs/ESP32-MQTT.md -- LWT + status, digits "020" ->
+//                         "000" as state + ocr, then a finished state/event, then
+//                         stays connected until Ctrl+C (the broker then sends
+//                         the "offline" LWT).
 //
 // Options (env vars or flags, flags take precedence):
 //   --device-id <id>     Camera device_id to send as (default: seed-device-1,
@@ -34,6 +39,8 @@
 //   --mqtt-password <p>  That account's password (env MQTT_PASSWORD)
 //   --topic-prefix <p>   Topic prefix (default: dev/washon, env MQTT_TOPIC_PREFIX);
 //                         frames go to {prefix}/{device_id}/ocr
+//   --interval <sec>     esp32 only: seconds between countdown steps (default 5;
+//                         under 5 the backend rate limit drops some ocr frames)
 //
 // Examples:
 //   npm run simulate -- decreasing-countdown
@@ -41,8 +48,9 @@
 //   BASE_URL=http://localhost:4000 npm run simulate -- finish
 //   MQTT_PASSWORD=... npm run simulate -- wash-cycle --mqtt-url mqtts://mqtt.washon.site:8883 \
 //     --device-id wm-test
+//   MQTT_PASSWORD=... npm run simulate -- esp32 --mqtt-url mqtts://mqtt.washon.site:8883 --device-id wm-test
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -141,6 +149,7 @@ function parseArgs(argv: string[]) {
     else if (arg === "--mqtt-username") opts.mqttUsername = argv[++i];
     else if (arg === "--mqtt-password") opts.mqttPassword = argv[++i];
     else if (arg === "--topic-prefix") opts.topicPrefix = argv[++i];
+    else if (arg === "--interval") opts.interval = argv[++i];
     else {
       console.error(`Unknown argument: ${arg}`);
       process.exit(1);
@@ -213,15 +222,97 @@ async function mqttTransport(url: string, username: string, password: string | u
   };
 }
 
+const ESP32_DESCRIPTION =
+  'MQTT only: ESP32-CAM per docs/ESP32-MQTT.md -- LWT/status, "020" -> "000" countdown, finished state/event, ' +
+  "then stays connected until Ctrl+C.";
+
+/** remaining_min as the device computes it: 3 digits H:MM, 4 digits HH:MM, 1-2 digits minutes. */
+function remainingMinutes(digits: string): number | null {
+  if (!/^\d{1,4}$/.test(digits)) return null;
+  if (digits.length <= 2) return Number(digits);
+  return Number(digits.slice(0, -2)) * 60 + Number(digits.slice(-2));
+}
+
+// Mirrors the device in docs/ESP32-MQTT.md: status/state/event for the device
+// spec, plus the ocr frame the backend actually reads (raw_text = remaining
+// minutes, "" once the display is off).
+async function runEsp32(url: string, username: string, password: string | undefined, prefix: string,
+    deviceId: string, intervalMs: number) {
+  const topic = (name: string) => `${prefix}/${deviceId}/${name}`;
+  const client = await mqtt.connectAsync(url, {
+    username,
+    password,
+    clientId: deviceId,
+    keepalive: 30,
+    connectTimeout: 10_000,
+    will: { topic: topic("status"), payload: Buffer.from("offline"), qos: 1, retain: true },
+  });
+  console.log(`Scenario: esp32 -- ${ESP32_DESCRIPTION}`);
+  console.log(`Target:   MQTT ${url} topics ${topic("{status,state,event,ocr}")}`);
+  console.log(`Device:   ${deviceId}\n`);
+
+  // Like the device: a random id per boot, so frame_hash never repeats after a restart.
+  const bootId = randomBytes(4).toString("hex");
+  let seq = 0;
+  const now = () => Math.floor(Date.now() / 1000);
+
+  const publishState = async (phase: string, digits: string) => {
+    const state = {
+      device: deviceId, phase, digits, remaining_min: digits ? remainingMinutes(digits) : null,
+      display_on: digits !== "", ts: now(), seq: seq++,
+    };
+    await client.publishAsync(topic("state"), JSON.stringify(state), { qos: 1, retain: true });
+    return state;
+  };
+  const publishOcr = async (minutes: number | null) => {
+    const rawText = minutes ? String(minutes) : "";
+    const ocr = {
+      device_id: deviceId, captured_at: new Date().toISOString(), confidence: 0.95, raw_text: rawText,
+      frame_hash: `${bootId}-${seq++}`,
+    };
+    await client.publishAsync(topic("ocr"), JSON.stringify(ocr), { qos: 1 });
+    return rawText;
+  };
+
+  await client.publishAsync(topic("status"), "online", { qos: 1, retain: true });
+  console.log('status "online" (retained, LWT "offline")');
+
+  for (let left = 20; left >= 0; left--) {
+    const digits = String(left).padStart(3, "0");
+    const state = await publishState("running", digits);
+    const rawText = await publishOcr(state.remaining_min);
+    console.log(`state running digits=${digits} remaining_min=${state.remaining_min} | ocr raw_text=${JSON.stringify(rawText)}`);
+    await sleep(intervalMs);
+  }
+
+  await publishState("finished", "");
+  await client.publishAsync(topic("event"), JSON.stringify({ device: deviceId, type: "finished", ts: now() }), { qos: 1 });
+  await publishOcr(null);
+  console.log('state finished display_on=false | event finished | ocr raw_text=""');
+  console.log("\nCountdown done. Staying connected like the device (ocr every 10s, state every 60s); Ctrl+C to stop.");
+
+  // Exit without a DISCONNECT packet, as a device that loses power would, so the broker publishes the LWT.
+  process.on("SIGINT", () => {
+    console.log("\nStopped: the broker publishes the offline LWT.");
+    process.exit(0);
+  });
+  for (let tick = 1; ; tick++) {
+    await sleep(10_000);
+    await publishOcr(null);
+    if (tick % 6 === 0) await publishState("finished", "");
+  }
+}
+
 async function main() {
   const { scenario: scenarioName, opts } = parseArgs(process.argv.slice(2));
 
-  if (!scenarioName || !SCENARIOS[scenarioName]) {
+  if (!scenarioName || !(scenarioName === "esp32" || SCENARIOS[scenarioName])) {
     console.error(`Usage: npm run simulate -- <scenario> [options]\n`);
     console.error("Available scenarios:");
     for (const [name, s] of Object.entries(SCENARIOS)) {
       console.error(`  ${name.padEnd(22)} ${s.description}`);
     }
+    console.error(`  ${"esp32".padEnd(22)} ${ESP32_DESCRIPTION}`);
     process.exit(1);
   }
 
@@ -230,6 +321,19 @@ async function main() {
   const baseUrl = opts.baseUrl ?? process.env.BASE_URL ?? "http://localhost:8081";
 
   const mqttUrl = opts.mqttUrl ?? process.env.MQTT_URL;
+  const mqttUsername = opts.mqttUsername ?? process.env.MQTT_USERNAME ?? deviceId;
+  const mqttPassword = opts.mqttPassword ?? process.env.MQTT_PASSWORD;
+  const topicPrefix = opts.topicPrefix ?? process.env.MQTT_TOPIC_PREFIX ?? "dev/washon";
+
+  if (scenarioName === "esp32") {
+    if (!mqttUrl) {
+      console.error("The esp32 scenario publishes over MQTT: pass --mqtt-url or set MQTT_URL.");
+      process.exit(1);
+    }
+    const intervalSec = Number(opts.interval ?? 5);
+    await runEsp32(mqttUrl, mqttUsername, mqttPassword, topicPrefix, deviceId, intervalSec * 1000);
+    return;
+  }
 
   if (!mqttUrl && !apiKey) {
     console.error(
@@ -240,9 +344,7 @@ async function main() {
   }
 
   const transport = mqttUrl
-    ? await mqttTransport(mqttUrl, opts.mqttUsername ?? process.env.MQTT_USERNAME ?? deviceId,
-        opts.mqttPassword ?? process.env.MQTT_PASSWORD,
-        opts.topicPrefix ?? process.env.MQTT_TOPIC_PREFIX ?? "dev/washon", deviceId)
+    ? await mqttTransport(mqttUrl, mqttUsername, mqttPassword, topicPrefix, deviceId)
     : httpTransport(baseUrl, apiKey!);
 
   const scenario = SCENARIOS[scenarioName];

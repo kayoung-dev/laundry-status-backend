@@ -69,6 +69,7 @@ git switch dev && git merge --ff-only main && git push    # 또는 main → dev 
 - MQTT는 응답이 없어서 거부된 메시지는 백엔드 로그에만 남는다: `docker logs dev-app | grep "Rejected MQTT"`
 - 백엔드가 재시작하는 동안 온 QoS 1 메시지는 브로커가 보관했다가 전달한다.
 - HTTP(`POST /ingest/ocr`)는 기존대로 `X-Api-Key`가 필요하다.
+- ESP32-CAM 기기 쪽 규격(`status`/`state`/`event` 토픽, `raw_text` 규칙, `esp32` 시뮬레이터)은 [ESP32-MQTT.md](ESP32-MQTT.md).
 
 ## 시드 데이터 (개발 서버 전용)
 
