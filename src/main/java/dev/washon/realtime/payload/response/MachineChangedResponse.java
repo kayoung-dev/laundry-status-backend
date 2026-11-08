@@ -9,6 +9,7 @@ public record MachineChangedResponse(
         String machineId,
         MachineState state,
         Integer remainingMin,
+        Integer remainingSec,
         String errorCode,
         WashStage washStage,
         int version,

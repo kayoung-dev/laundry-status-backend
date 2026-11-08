@@ -104,14 +104,14 @@ public class MachineStateCommitService {
         Instant updatedAt = Instant.now();
 
         int updated = currentStates.compareAndSetState(machineId, expectedVersion, newVersion,
-                next.state(), next.remainingMin(), next.errorCode(), next.stage(), lastFrameAt, staleSince,
-                updatedAt);
+                next.state(), next.remainingMin(), next.remainingSec(), next.errorCode(), next.stage(), lastFrameAt,
+                staleSince, updatedAt);
         if (updated != 1) {
             throw concurrentWrite(machineId, expectedVersion);
         }
 
-        appendAndPublish(machineId, EventSource.system, next.state(), next.remainingMin(), next.errorCode(),
-                next.stage(), newVersion, null, updatedAt);
+        appendAndPublish(machineId, EventSource.system, next.state(), next.remainingMin(), next.remainingSec(),
+                next.errorCode(), next.stage(), newVersion, null, updatedAt);
     }
 
     /**
@@ -159,14 +159,15 @@ public class MachineStateCommitService {
             throw concurrentWrite(machineId, expectedVersion);
         }
 
-        appendAndPublish(machineId, EventSource.admin_override, state, remainingMin, errorCode, washStage,
+        appendAndPublish(machineId, EventSource.admin_override, state, remainingMin, null, errorCode, washStage,
                 newVersion, auditDetail, updatedAt);
         // clearAutomatically on the update detached the stale entity; re-read the moved row.
         return currentStates.findById(machineId).orElseThrow();
     }
 
     private void appendAndPublish(String machineId, EventSource source, MachineState state, Integer remainingMin,
-            String errorCode, WashStage washStage, int newVersion, String rawText, Instant updatedAt) {
+            Integer remainingSec, String errorCode, WashStage washStage, int newVersion, String rawText,
+            Instant updatedAt) {
         MachineStateEvent event = new MachineStateEvent();
         event.setMachineId(machineId);
         event.setSource(source);
@@ -181,7 +182,7 @@ public class MachineStateCommitService {
         // (RoomEventBroker) -- a client must never observe a change this transaction
         // could still roll back.
         machines.findById(machineId).ifPresent(machine -> eventPublisher.publishEvent(
-                new MachineChangedEvent(machine.getRoomId(), machineId, state, remainingMin,
+                new MachineChangedEvent(machine.getRoomId(), machineId, state, remainingMin, remainingSec,
                         errorCode, washStage, newVersion, updatedAt)));
     }
 
@@ -219,6 +220,7 @@ public class MachineStateCommitService {
     private static boolean isChange(MachineCurrentState current, StateDecision next) {
         return current.getState() != next.state()
                 || !Objects.equals(current.getRemainingMin(), next.remainingMin())
+                || !Objects.equals(current.getRemainingSec(), next.remainingSec())
                 || !Objects.equals(current.getErrorCode(), next.errorCode())
                 || current.getWashStage() != next.stage();
     }

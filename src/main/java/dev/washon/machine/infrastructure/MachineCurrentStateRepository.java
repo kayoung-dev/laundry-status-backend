@@ -20,8 +20,8 @@ public interface MachineCurrentStateRepository extends JpaRepository<MachineCurr
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             UPDATE MachineCurrentState s
-               SET s.state = :state, s.remainingMin = :remainingMin, s.errorCode = :errorCode,
-                   s.washStage = :washStage,
+               SET s.state = :state, s.remainingMin = :remainingMin, s.remainingSec = :remainingSec,
+                   s.errorCode = :errorCode, s.washStage = :washStage,
                    s.version = :newVersion, s.lastFrameAt = :lastFrameAt, s.staleSince = :staleSince,
                    s.updatedAt = :updatedAt
              WHERE s.machineId = :machineId AND s.version = :expectedVersion
@@ -31,6 +31,7 @@ public interface MachineCurrentStateRepository extends JpaRepository<MachineCurr
             @Param("newVersion") int newVersion,
             @Param("state") MachineState state,
             @Param("remainingMin") Integer remainingMin,
+            @Param("remainingSec") Integer remainingSec,
             @Param("errorCode") String errorCode,
             @Param("washStage") WashStage washStage,
             @Param("lastFrameAt") Instant lastFrameAt,
@@ -42,11 +43,12 @@ public interface MachineCurrentStateRepository extends JpaRepository<MachineCurr
      * {@code WHERE version = :expectedVersion} guard, but moves the override
      * flag instead of camera freshness ({@code lastFrameAt}/{@code staleSince}
      * are left untouched -- liveness is the camera's, not the admin's).
+     * Seconds are always cleared: an admin never sets a camera reading.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             UPDATE MachineCurrentState s
-               SET s.state = :state, s.remainingMin = :remainingMin, s.errorCode = :errorCode,
+               SET s.state = :state, s.remainingMin = :remainingMin, s.remainingSec = null, s.errorCode = :errorCode,
                    s.washStage = :washStage,
                    s.version = :newVersion, s.overrideActive = :overrideActive, s.overrideBy = :overrideBy,
                    s.updatedAt = :updatedAt

@@ -20,8 +20,8 @@
 //                         available, using the "W:mm"/"R:mm"/"S:mm" stage-prefixed
 //                         countdown text (see OcrReading.STAGE_PATTERN).
 //   esp32                 MQTT only: behaves like the ESP32-CAM in
-//                         docs/ESP32-MQTT.md -- LWT + status, digits "020" ->
-//                         "000" as state + ocr, then a finished state/event, then
+//                         docs/ESP32-MQTT.md -- LWT + status, MM:SS digits "0130" ->
+//                         "0000" (real time) as state + ocr, then a finished state/event, then
 //                         stays connected until Ctrl+C (the broker then sends
 //                         the "offline" LWT).
 //
@@ -223,19 +223,27 @@ async function mqttTransport(url: string, username: string, password: string | u
 }
 
 const ESP32_DESCRIPTION =
-  'MQTT only: ESP32-CAM per docs/ESP32-MQTT.md -- LWT/status, "020" -> "000" countdown, finished state/event, ' +
+  'MQTT only: ESP32-CAM per docs/ESP32-MQTT.md -- LWT/status, MM:SS "0130" -> "0000" countdown in real time, ' +
+  "finished state/event, " +
   "then stays connected until Ctrl+C.";
 
-/** remaining_min as the device computes it: 3 digits H:MM, 4 digits HH:MM, 1-2 digits minutes. */
-function remainingMinutes(digits: string): number | null {
+/** Seconds left as the device reads its MM:SS display: the last two digits are seconds ("0310" -> 190). */
+function remainingSeconds(digits: string): number | null {
   if (!/^\d{1,4}$/.test(digits)) return null;
-  if (digits.length <= 2) return Number(digits);
-  return Number(digits.slice(0, -2)) * 60 + Number(digits.slice(-2));
+  const sec = Number(digits.slice(-2));
+  if (sec >= 60) return null;
+  return Number(digits.slice(0, -2) || "0") * 60 + sec;
+}
+
+/** The ocr raw_text the backend reads: "M:SS", or "" once nothing is left. */
+function clockText(seconds: number | null): string {
+  if (!seconds) return "";
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 // Mirrors the device in docs/ESP32-MQTT.md: status/state/event for the device
-// spec, plus the ocr frame the backend actually reads (raw_text = remaining
-// minutes, "" once the display is off).
+// spec, plus the ocr frame the backend actually reads (raw_text = "M:SS",
+// "" once the display is off).
 async function runEsp32(url: string, username: string, password: string | undefined, prefix: string,
     deviceId: string, intervalMs: number) {
   const topic = (name: string) => `${prefix}/${deviceId}/${name}`;
@@ -257,15 +265,16 @@ async function runEsp32(url: string, username: string, password: string | undefi
   const now = () => Math.floor(Date.now() / 1000);
 
   const publishState = async (phase: string, digits: string) => {
+    const remainingSec = digits ? remainingSeconds(digits) : null;
     const state = {
-      device: deviceId, phase, digits, remaining_min: digits ? remainingMinutes(digits) : null,
-      display_on: digits !== "", ts: now(), seq: seq++,
+      device: deviceId, phase, digits, remaining_min: remainingSec === null ? null : Math.ceil(remainingSec / 60),
+      remaining_sec: remainingSec, display_on: digits !== "", ts: now(), seq: seq++,
     };
     await client.publishAsync(topic("state"), JSON.stringify(state), { qos: 1, retain: true });
     return state;
   };
-  const publishOcr = async (minutes: number | null) => {
-    const rawText = minutes ? String(minutes) : "";
+  const publishOcr = async (seconds: number | null) => {
+    const rawText = clockText(seconds);
     const ocr = {
       device_id: deviceId, captured_at: new Date().toISOString(), confidence: 0.95, raw_text: rawText,
       frame_hash: `${bootId}-${seq++}`,
@@ -277,11 +286,13 @@ async function runEsp32(url: string, username: string, password: string | undefi
   await client.publishAsync(topic("status"), "online", { qos: 1, retain: true });
   console.log('status "online" (retained, LWT "offline")');
 
-  for (let left = 20; left >= 0; left--) {
-    const digits = String(left).padStart(3, "0");
+  // The display counts down in real time, so each step drops by the interval.
+  const step = Math.max(1, Math.round(intervalMs / 1000));
+  for (let left = 90; left >= 0; left -= step) {
+    const digits = `${String(Math.floor(left / 60)).padStart(2, "0")}${String(left % 60).padStart(2, "0")}`;
     const state = await publishState("running", digits);
-    const rawText = await publishOcr(state.remaining_min);
-    console.log(`state running digits=${digits} remaining_min=${state.remaining_min} | ocr raw_text=${JSON.stringify(rawText)}`);
+    const rawText = await publishOcr(state.remaining_sec);
+    console.log(`state running digits=${digits} remaining_sec=${state.remaining_sec} | ocr raw_text=${JSON.stringify(rawText)}`);
     await sleep(intervalMs);
   }
 

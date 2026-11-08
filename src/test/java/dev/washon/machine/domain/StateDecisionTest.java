@@ -17,7 +17,7 @@ class StateDecisionTest {
         assertThat(OcrReading.parse("E01")).isEqualTo(new OcrReading.ErrorDisplay("E01"));
         assertThat(OcrReading.parse("F-21")).isEqualTo(new OcrReading.ErrorDisplay("F21"));
         assertThat(OcrReading.parse("f 3")).isEqualTo(new OcrReading.ErrorDisplay("F3"));
-        assertThat(OcrReading.parse("12:01")).isEqualTo(new OcrReading.Countdown(13)); // ceil
+        assertThat(OcrReading.parse("12:01")).isEqualTo(new OcrReading.Countdown(13, null, 721)); // minutes = ceil
         assertThat(OcrReading.parse("23")).isEqualTo(new OcrReading.Countdown(23));
         assertThat(OcrReading.parse("--")).isEqualTo(new OcrReading.Noise());
         assertThat(OcrReading.parse("AB")).isEqualTo(new OcrReading.Noise());
@@ -77,6 +77,24 @@ class StateDecisionTest {
         // the P2-002 convention.
         assertThat(StateDecision.decide(List.of(plain13, plain13, new OcrReading.Countdown(10)))
                 .stage()).isNull();
+    }
+
+    /** An MM:SS display ("0310" read as "3:10") keeps the exact seconds; a minutes-only display has none. */
+    @Test
+    void anMmSsDisplayCarriesExactSecondsAndCountsDownWithinAMinute() {
+        OcrReading.Countdown c = (OcrReading.Countdown) OcrReading.parse("3:10");
+        assertThat(c.remainingSec()).isEqualTo(190);
+        assertThat(c.remainingMin()).isEqualTo(4);
+        assertThat(((OcrReading.Countdown) OcrReading.parse("23")).remainingSec()).isNull();
+
+        // 3:30 -> 3:20 -> 3:10 stays at "4 minutes" but is clearly running.
+        StateDecision decision = StateDecision.decide(
+                List.of(OcrReading.parse("3:30"), OcrReading.parse("3:20"), OcrReading.parse("3:10")));
+        assertThat(decision).isEqualTo(new StateDecision(MachineState.in_use, 4, null, null, 190));
+
+        // A minutes-only countdown decides with no seconds.
+        assertThat(StateDecision.decide(List.of(new OcrReading.Countdown(5), new OcrReading.Countdown(4),
+                new OcrReading.Countdown(3))).remainingSec()).isNull();
     }
 
     @Test

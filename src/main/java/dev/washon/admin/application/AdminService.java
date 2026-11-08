@@ -105,6 +105,7 @@ public class AdminService {
                     roomNameById.get(machine.getRoomId()),
                     current != null ? current.getState() : MachineState.unknown,
                     current != null ? current.getRemainingMin() : null,
+                    current != null ? current.getRemainingSec() : null,
                     current != null ? current.getErrorCode() : null,
                     current != null && current.isOverrideActive(),
                     current != null ? current.getOverrideBy() : null,
