@@ -12,7 +12,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * {@code /admin/auth/me} (SB-005), and everything under
  * {@code /admin/machines} -- the dashboard, override set/clear and audit log
  * (SB-006, dev.washon.admin.api.AdminApi) plus SB-004's needs-check route
- * (dev.washon.report.api.ReportApi).
+ * (dev.washon.report.api.ReportApi). Also registers
+ * {@link StudentAuthInterceptor} on the student routes that need a session
+ * ({@code /auth/me}; login/logout/signup stay open).
  *
  * <p>Also declares CORS for the frontend's origins (SB-008). The admin
  * session is an httpOnly cookie, so the frontend's {@code fetch} calls use
@@ -26,12 +28,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class AdminWebConfig implements WebMvcConfigurer {
 
     private final AdminAuthInterceptor adminAuthInterceptor;
+    private final StudentAuthInterceptor studentAuthInterceptor;
     private final String[] allowedOrigins;
 
     public AdminWebConfig(
             AdminAuthInterceptor adminAuthInterceptor,
+            StudentAuthInterceptor studentAuthInterceptor,
             @Value("${washon.cors.allowed-origins:http://localhost:3000}") String[] allowedOrigins) {
         this.adminAuthInterceptor = adminAuthInterceptor;
+        this.studentAuthInterceptor = studentAuthInterceptor;
         this.allowedOrigins = allowedOrigins;
     }
 
@@ -39,6 +44,8 @@ public class AdminWebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(adminAuthInterceptor)
                 .addPathPatterns("/admin/auth/me", "/admin/machines", "/admin/machines/**");
+        registry.addInterceptor(studentAuthInterceptor)
+                .addPathPatterns("/auth/me");
     }
 
     @Override
