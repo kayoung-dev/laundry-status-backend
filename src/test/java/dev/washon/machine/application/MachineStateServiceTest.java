@@ -158,10 +158,10 @@ class MachineStateServiceTest {
     }
 
     @Nested
-    class Ac2BlankOrZeroDisplayEndsTheCycleStraightToAvailable {
+    class Ac2ZeroDisplayEndsTheCycleStraightToAvailable {
 
         @Test
-        void endsTheCycleOnADarkDisplayStraightToAvailable() throws Exception {
+        void endsTheCycleOnAZeroClockStraightToAvailable() throws Exception {
             TestCamera camera = seedCamera("finish");
 
             postFrame(camera, "05");
@@ -169,7 +169,7 @@ class MachineStateServiceTest {
             postFrame(camera, "02");
             assertThat(currentState(camera).getState()).isEqualTo(MachineState.in_use);
 
-            postFrame(camera, "");
+            postFrame(camera, "0:00");
 
             MachineCurrentState finished = currentState(camera);
             assertThat(finished.getState()).isEqualTo(MachineState.available);
@@ -179,7 +179,7 @@ class MachineStateServiceTest {
         }
 
         @Test
-        void treatsAZeroValueDisplayTheSameAsABlankOne() throws Exception {
+        void treatsAPlainZeroDisplayTheSameAsAZeroClock() throws Exception {
             TestCamera camera = seedCamera("zero");
 
             postFrame(camera, "04");
@@ -194,12 +194,29 @@ class MachineStateServiceTest {
         void readsADisplayThatWasNeverCountingDownAsAnIdleMachine() throws Exception {
             TestCamera camera = seedCamera("idle");
 
-            postFrame(camera, "");
-            postFrame(camera, "");
+            postFrame(camera, "0:00");
+            postFrame(camera, "0:00");
 
             assertThat(currentState(camera).getState()).isEqualTo(MachineState.available);
-            // No flapping: the second dark frame changed nothing.
+            // No flapping: the second zero frame changed nothing.
             assertThat(systemEvents(camera)).extracting(SystemEvent::state).containsExactly("available");
+        }
+
+        @Test
+        void aBlankReadingMidCycleIsACameraFaultNotAFinishedCycle() throws Exception {
+            TestCamera camera = seedCamera("blank");
+
+            postFrame(camera, "3:12");
+            postFrame(camera, "3:11");
+            postFrame(camera, "3:10");
+            assertThat(currentState(camera).getState()).isEqualTo(MachineState.in_use);
+
+            postFrame(camera, ""); // camera could not read the display
+
+            MachineCurrentState fault = currentState(camera);
+            assertThat(fault.getState()).isEqualTo(MachineState.unknown);
+            assertThat(fault.getRemainingSec()).isNull();
+            assertThat(systemEvents(camera)).extracting(SystemEvent::state).containsExactly("in_use", "unknown");
         }
     }
 
@@ -475,7 +492,7 @@ class MachineStateServiceTest {
             postFrame(camera, "W:20");
             postFrame(camera, "W:16");
             postFrame(camera, "W:12"); // consensus reached -> in_use / wash
-            postFrame(camera, ""); // dark display: cycle just ended -> available
+            postFrame(camera, "0:00"); // zero display: cycle just ended -> available
 
             MachineCurrentState finished = currentState(camera);
             assertThat(finished.getState()).isEqualTo(MachineState.available);

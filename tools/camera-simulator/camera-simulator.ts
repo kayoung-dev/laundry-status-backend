@@ -10,8 +10,10 @@
 //
 // Scenarios:
 //   decreasing-countdown  Normal in-use pattern: a washer/dryer counting down.
-//   finish                Countdown reaching zero, then a blank display: the
-//                         machine goes straight back to available.
+//   finish                Countdown reaching zero ("00", "0:00"): the machine
+//                         goes straight back to available.
+//   camera-fault          MM:SS countdown, then a blank reading (the camera
+//                         cannot read the display): unknown, never available.
 //   error                 An E- or F-prefixed error code appears on the display.
 //   stale                 A couple of normal frames, then the camera goes silent
 //                         (script just stops sending -- staleness detection is a
@@ -86,15 +88,25 @@ const SCENARIOS: Record<string, Scenario> = {
     ],
   },
   finish: {
-    description: "Countdown reaches zero, then the display goes blank: in_use -> available (no done state).",
+    description: 'Countdown reaches zero ("00", "0:00"): in_use -> available (no done state).',
     frames: [
       // 3 frames to cross the in-use consensus threshold first.
       { raw_text: "05", confidence: 0.96, delayMs: 0 },
       { raw_text: "04", confidence: 0.95, delayMs: 800 },
       { raw_text: "02", confidence: 0.95, delayMs: 800 },
-      // A zero or blank display ends the cycle: available immediately.
+      // A zero display ends the cycle: available immediately.
       { raw_text: "00", confidence: 0.94, delayMs: 800 },
-      { raw_text: "", confidence: 0.9, delayMs: 800 },
+      { raw_text: "0:00", confidence: 0.9, delayMs: 800 },
+    ],
+  },
+  "camera-fault": {
+    description: 'MM:SS countdown, then a blank reading (camera cannot read the display): in_use -> unknown.',
+    frames: [
+      { raw_text: "3:12", confidence: 0.96, delayMs: 0 },
+      { raw_text: "3:11", confidence: 0.95, delayMs: 1000 },
+      { raw_text: "3:10", confidence: 0.95, delayMs: 1000 },
+      // Blank = the camera could not read the digits, not a finished cycle.
+      { raw_text: "", confidence: 0.9, delayMs: 1000 },
     ],
   },
   error: {
@@ -130,10 +142,10 @@ const SCENARIOS: Record<string, Scenario> = {
       // established (see StateDecision.decide).
       { raw_text: "R:9", confidence: 0.96, delayMs: 800 },
       { raw_text: "S:5", confidence: 0.95, delayMs: 800 },
-      // End: a dark display means the cycle ended -> available. Longer pause here (both realistic, and to stay under the
+      // End: a zero display means the cycle ended -> available. Longer pause here (both realistic, and to stay under the
       // per-camera ingest rate limit -- OcrIngestService.BUCKET_CAPACITY is
       // 5 frames per burst).
-      { raw_text: "", confidence: 0.9, delayMs: 2000 },
+      { raw_text: "0:00", confidence: 0.9, delayMs: 2000 },
     ],
   },
 };
@@ -236,15 +248,15 @@ function remainingSeconds(digits: string): number | null {
   return Number(digits.slice(0, -2) || "0") * 60 + sec;
 }
 
-/** The ocr raw_text the backend reads: "M:SS", or "" once nothing is left. */
+/** The ocr raw_text the backend reads: "M:SS" ("0:00" when finished), or "" when the camera cannot read it. */
 function clockText(seconds: number | null): string {
-  if (!seconds) return "";
+  if (seconds === null) return "";
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 // Mirrors the device in docs/ESP32-MQTT.md: status/state/event for the device
 // spec, plus the ocr frame the backend actually reads (raw_text = "M:SS",
-// "" once the display is off).
+// "0:00" once finished).
 async function runEsp32(url: string, username: string, password: string | undefined, prefix: string,
     deviceId: string, intervalMs: number) {
   const topic = (name: string) => `${prefix}/${deviceId}/${name}`;
@@ -297,10 +309,10 @@ async function runEsp32(url: string, username: string, password: string | undefi
     await sleep(intervalMs);
   }
 
-  await publishState("finished", "");
+  await publishState("finished", "0000");
   await client.publishAsync(topic("event"), JSON.stringify({ device: deviceId, type: "finished", ts: now() }), { qos: 1 });
-  await publishOcr(null);
-  console.log('state finished display_on=false | event finished | ocr raw_text=""');
+  await publishOcr(0);
+  console.log('state finished digits=0000 | event finished | ocr raw_text="0:00"');
   console.log("\nCountdown done. Staying connected like the device (ocr every 10s, state every 60s); Ctrl+C to stop.");
 
   // Exit without a DISCONNECT packet, as a device that loses power would, so the broker publishes the LWT.
@@ -310,8 +322,8 @@ async function runEsp32(url: string, username: string, password: string | undefi
   });
   for (let tick = 1; ; tick++) {
     await sleep(10_000);
-    await publishOcr(null);
-    if (tick % 6 === 0) await publishState("finished", "");
+    await publishOcr(0);
+    if (tick % 6 === 0) await publishState("finished", "0000");
   }
 }
 

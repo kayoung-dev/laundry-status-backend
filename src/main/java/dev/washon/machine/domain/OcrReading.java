@@ -46,6 +46,14 @@ public sealed interface OcrReading {
     record Finished() implements OcrReading {
     }
 
+    /**
+     * The camera sent a blank reading: it could not read the display (nothing
+     * lit, only part of the digits, a bad angle). Not "the cycle ended" -- a
+     * finished cycle reads as zero ("0:00").
+     */
+    record CameraFault() implements OcrReading {
+    }
+
     record ErrorDisplay(String code) implements OcrReading {
     }
 
@@ -74,8 +82,8 @@ public sealed interface OcrReading {
     /**
      * Parses one frame of OCR text into a reading.
      *
-     * <p>Recognised shapes: blank/zero display ("", "0", "00", "0:00") ->
-     * finished; E/F-prefixed codes ("E01", "F-21", "f 3") -> error;
+     * <p>Recognised shapes: blank ("") -> camera fault; zero display ("0",
+     * "00", "0:00") -> finished; E/F-prefixed codes ("E01", "F-21", "f 3") -> error;
      * stage-prefixed countdown ("W:22", "R:8", "S:3", see
      * {@link #STAGE_PATTERN}) -> countdown with a known stage; "MM:SS"
      * ("3:10") -> countdown with exact seconds; plain minutes ("23") ->
@@ -84,7 +92,7 @@ public sealed interface OcrReading {
     static OcrReading parse(String rawText) {
         String text = (rawText == null ? "" : rawText).strip().toUpperCase(Locale.ROOT);
         if (text.isEmpty()) {
-            return new Finished();
+            return new CameraFault();
         }
 
         String compact = SEPARATORS.matcher(text).replaceAll("");

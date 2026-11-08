@@ -81,8 +81,8 @@ class MachineStateTimingTest {
         postFrame(finishing, "02");
         assertThat(currentState(finishing).getState()).isEqualTo(MachineState.in_use);
 
-        // The display going dark ends the cycle: available at once, no grace period.
-        postFrame(finishing, "");
+        // The display reaching zero ends the cycle: available at once, no grace period.
+        postFrame(finishing, "0:00");
         MachineCurrentState finished = currentState(finishing);
         assertThat(finished.getState()).isEqualTo(MachineState.available);
         assertThat(finished.getRemainingMin()).isNull();
@@ -94,12 +94,12 @@ class MachineStateTimingTest {
 
         long silentSince = System.currentTimeMillis();
 
-        // A keepalive dark frame keeps the finished machine fresh (its stale
+        // A keepalive zero frame keeps the finished machine fresh (its stale
         // timer restarts) without re-committing it; the silent camera says
         // nothing. One keepalive only: the per-camera ingest bucket holds 5
         // frames and this camera has already sent 4.
         Thread.sleep(KEEPALIVE_AFTER_MS);
-        postFrame(finishing, "");
+        postFrame(finishing, "0:00");
         assertThat(currentState(finishing).getState()).isEqualTo(MachineState.available);
 
         // Past the silent machine's stale deadline, still before the finished
